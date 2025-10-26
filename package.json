@@ -1,5 +1,5 @@
 {
-  "name": "bolt-expo-starter",
+  "name": "almari-app",
   "main": "expo-router/entry",
   "version": "1.0.0",
   "private": true,
@@ -24,6 +24,7 @@
     "empty-module": "^0.0.2",
     "expo": "54.0.12",
     "expo-blur": "~15.0.7",
+    "expo-build-properties": "~1.0.9",
     "expo-camera": "~17.0.8",
     "expo-constants": "~18.0.9",
     "expo-file-system": "~19.0.16",

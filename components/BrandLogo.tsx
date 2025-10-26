@@ -1,3 +1,4 @@
+// components/BrandLogo.tsx
 import { View, Text, TextStyle } from 'react-native';
 import { useFonts } from 'expo-font';
 
@@ -8,7 +9,7 @@ interface BrandLogoProps {
 
 export default function BrandLogo({ size = 'medium', style }: BrandLogoProps) {
   const [fontsLoaded] = useFonts({
-    'Centaur': require('../assets/fonts/centaur-regular.ttf'),
+    Centaur: require('../assets/fonts/centaur-regular.ttf'),
   });
 
   const sizes = {
@@ -18,10 +19,10 @@ export default function BrandLogo({ size = 'medium', style }: BrandLogoProps) {
   };
 
   const fontSize = sizes[size];
-  
-  // Meta AI style colors
-  const purpleColor = '#7148d0ff'; // Purple for 'a' and 'i'
-  const brownColor = '#43270F';  // Brown for 'LMAR'
+
+  // ✅ NEW COLORS - Electric Purple & Brown
+  const purpleColor = '#8C00FF'; // Electric purple for 'a' and 'i'
+  const brownColor = '#6B7280'; // Tropical wood brown for 'LMAR'
 
   const baseStyle = {
     fontFamily: fontsLoaded ? 'Centaur' : 'serif',

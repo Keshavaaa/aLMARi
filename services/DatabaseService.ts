@@ -1,7 +1,6 @@
 import * as SQLite from 'expo-sqlite';
-// At the bottom of DatabaseService.ts, add:
-export type { ClothingItemData, UserData };
 
+// Interface definitions
 interface UserData {
   username: string;
   device_id: string;
@@ -27,26 +26,66 @@ interface ClothingItemData {
   ai_analysis?: string;
 }
 
-// ✅ Helper function to convert undefined to null for SQLite
+// Helper function to convert undefined to null for SQLite
 const toSQLiteValue = (value: any): any => {
   return value === undefined ? null : value;
 };
 
 class DatabaseService {
+  private static instance: DatabaseService;
   private db: SQLite.SQLiteDatabase | null = null;
+  private isInitializing: boolean = false;
 
-  constructor() {
-    this.initDatabase();
+  // ✅ Private constructor prevents multiple instances
+  private constructor() {}
+
+  // ✅ Get singleton instance
+  public static getInstance(): DatabaseService {
+    if (!DatabaseService.instance) {
+      DatabaseService.instance = new DatabaseService();
+    }
+    return DatabaseService.instance;
   }
 
-  async initDatabase(): Promise<void> {
+  // ✅ Initialize database (call once in app/_layout.tsx)
+  async initialize(): Promise<void> {
+    if (this.db) {
+      console.log('✅ Database already initialized');
+      return;
+    }
+
+    if (this.isInitializing) {
+      console.log('⏳ Database initialization in progress...');
+      // Wait for initialization to complete
+      while (this.isInitializing) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      return;
+    }
+
+    this.isInitializing = true;
+
     try {
-      this.db = await SQLite.openDatabaseAsync('almari.db');
+      console.log('🔄 Initializing database...');
+      this.db = await SQLite.openDatabaseAsync('almari.db', {
+        useNewConnection: true,
+      });
       await this.createTables();
       console.log('✅ Database initialized successfully');
     } catch (error) {
       console.error('❌ Database initialization error:', error);
+      throw error;
+    } finally {
+      this.isInitializing = false;
     }
+  }
+
+  // ✅ Get database instance (throws error if not initialized)
+  getDatabase(): SQLite.SQLiteDatabase {
+    if (!this.db) {
+      throw new Error('❌ Database not initialized. Call initialize() first in app/_layout.tsx');
+    }
+    return this.db;
   }
 
   private async createTables(): Promise<void> {
@@ -128,92 +167,113 @@ class DatabaseService {
     `);
   }
 
-  // ✅ FIX: User methods with proper null conversion
+  // ✅ All your existing methods, using getDatabase()
   async createUser(userData: UserData): Promise<number | null> {
-    if (!this.db) return null;
+    const db = this.getDatabase();
     
-    const result = await this.db.runAsync(
+    const result = await db.runAsync(
       'INSERT INTO users (username, device_id, body_type, skin_tone, style_preference, location) VALUES (?, ?, ?, ?, ?, ?)',
       [
-        userData.username, 
-        userData.device_id, 
-        toSQLiteValue(userData.body_type), 
-        toSQLiteValue(userData.skin_tone), 
-        toSQLiteValue(userData.style_preference), 
-        toSQLiteValue(userData.location)
+        userData.username,
+        userData.device_id,
+        toSQLiteValue(userData.body_type),
+        toSQLiteValue(userData.skin_tone),
+        toSQLiteValue(userData.style_preference),
+        toSQLiteValue(userData.location),
       ]
     );
     return result.lastInsertRowId;
   }
 
   async getUserByDeviceId(deviceId: string): Promise<any> {
-    if (!this.db) return null;
+    const db = this.getDatabase();
     
-    const result = await this.db.getFirstAsync(
+    const result = await db.getFirstAsync(
       'SELECT * FROM users WHERE device_id = ?',
       [deviceId]
     );
     return result;
   }
 
-  // ✅ FIX: Clothing methods with proper null conversion
   async addClothingItem(itemData: ClothingItemData): Promise<number | null> {
-    if (!this.db) return null;
+    const db = this.getDatabase();
     
-    const result = await this.db.runAsync(`
-      INSERT INTO clothing_items (
-        user_id, name, image_uri, clothing_type, primary_color, 
-        secondary_color, fabric_type, style_category, season_suitability, 
+    const result = await db.runAsync(
+      `INSERT INTO clothing_items (
+        user_id, name, image_uri, clothing_type, primary_color,
+        secondary_color, fabric_type, style_category, season_suitability,
         brand, size, price, ai_analysis
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      itemData.user_id, 
-      itemData.name, 
-      itemData.image_uri, 
-      toSQLiteValue(itemData.clothing_type),
-      toSQLiteValue(itemData.primary_color),
-      toSQLiteValue(itemData.secondary_color),  // ✅ Convert undefined to null
-      toSQLiteValue(itemData.fabric_type),
-      toSQLiteValue(itemData.style_category),
-      toSQLiteValue(itemData.season_suitability),
-      toSQLiteValue(itemData.brand),
-      toSQLiteValue(itemData.size),
-      toSQLiteValue(itemData.price),
-      toSQLiteValue(itemData.ai_analysis)
-    ]);
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        itemData.user_id,
+        itemData.name,
+        itemData.image_uri,
+        toSQLiteValue(itemData.clothing_type),
+        toSQLiteValue(itemData.primary_color),
+        toSQLiteValue(itemData.secondary_color),
+        toSQLiteValue(itemData.fabric_type),
+        toSQLiteValue(itemData.style_category),
+        toSQLiteValue(itemData.season_suitability),
+        toSQLiteValue(itemData.brand),
+        toSQLiteValue(itemData.size),
+        toSQLiteValue(itemData.price),
+        toSQLiteValue(itemData.ai_analysis),
+      ]
+    );
     return result.lastInsertRowId;
   }
 
   async getUserClothing(userId: number): Promise<any[]> {
-    if (!this.db) return [];
+    const db = this.getDatabase();
     
-    const result = await this.db.getAllAsync(
+    const result = await db.getAllAsync(
       'SELECT * FROM clothing_items WHERE user_id = ? ORDER BY created_at DESC',
       [userId]
     );
     return result;
   }
-  // ✅ FIX: Update method with proper null conversion
-  async updateClothingItem(itemId: number, updates: Partial<ClothingItemData>): Promise<void> {
-    if (!this.db) return;
+
+  async deleteClothingItem(itemId: number): Promise<string | null> {
+    const db = this.getDatabase();
     
-    const setClause = Object.keys(updates).map(key => `${key} = ?`).join(', ');
+    const item = (await db.getFirstAsync(
+      'SELECT image_uri FROM clothing_items WHERE id = ?',
+      [itemId]
+    )) as any;
+
+    await db.runAsync('DELETE FROM clothing_items WHERE id = ?', [itemId]);
+
+    console.log('✅ Deleted item from database:', itemId);
+    return item?.image_uri || null;
+  }
+
+  async updateClothingItem(
+    itemId: number,
+    updates: Partial<ClothingItemData>
+  ): Promise<void> {
+    const db = this.getDatabase();
+    
+    const setClause = Object.keys(updates)
+      .map(key => `${key} = ?`)
+      .join(', ');
     const values = [
-      ...Object.values(updates).map(val => toSQLiteValue(val)),  // ✅ Convert all undefined to null
-      itemId
+      ...Object.values(updates).map(val => toSQLiteValue(val)),
+      itemId,
     ];
-    
-    await this.db.runAsync(
+
+    await db.runAsync(
       `UPDATE clothing_items SET ${setClause} WHERE id = ?`,
       values
     );
   }
 
-  // ✅ FIX: Sticky notes with proper null conversion
-  async addStickyNote(clothingItemId: number, noteText: string): Promise<number | null> {
-    if (!this.db) return null;
+  async addStickyNote(
+    clothingItemId: number,
+    noteText: string
+  ): Promise<number | null> {
+    const db = this.getDatabase();
     
-    const result = await this.db.runAsync(
+    const result = await db.runAsync(
       'INSERT INTO sticky_notes (clothing_item_id, note_text) VALUES (?, ?)',
       [clothingItemId, noteText]
     );
@@ -221,35 +281,52 @@ class DatabaseService {
   }
 
   async getStickyNotes(clothingItemId: number): Promise<any[]> {
-    if (!this.db) return [];
+    const db = this.getDatabase();
     
-    const result = await this.db.getAllAsync(
+    const result = await db.getAllAsync(
       'SELECT * FROM sticky_notes WHERE clothing_item_id = ? ORDER BY created_at DESC',
       [clothingItemId]
     );
     return result;
   }
 
-  // ✅ FIX: Chat history with proper null conversion
-  async addChatMessage(userId: number, message: string, isUserMessage: boolean, contextData?: string): Promise<number | null> {
-    if (!this.db) return null;
+  async addChatMessage(
+    userId: number,
+    message: string,
+    isUserMessage: boolean,
+    contextData?: string
+  ): Promise<number | null> {
+    const db = this.getDatabase();
     
-    const result = await this.db.runAsync(
+    const result = await db.runAsync(
       'INSERT INTO chat_history (user_id, message, is_user_message, context_data) VALUES (?, ?, ?, ?)',
-      [userId, message, isUserMessage ? 1 : 0, toSQLiteValue(contextData)]  // ✅ Convert undefined to null
+      [userId, message, isUserMessage ? 1 : 0, toSQLiteValue(contextData)]
     );
     return result.lastInsertRowId;
   }
 
   async getChatHistory(userId: number, limit: number = 50): Promise<any[]> {
-    if (!this.db) return [];
+    const db = this.getDatabase();
     
-    const result = await this.db.getAllAsync(
+    const result = await db.getAllAsync(
       'SELECT * FROM chat_history WHERE user_id = ? ORDER BY created_at DESC LIMIT ?',
       [userId, limit]
     );
     return result.reverse();
   }
+  
+  // Close connection
+  async close(): Promise<void> {
+    if (this.db) {
+      await this.db.closeAsync();
+      this.db = null;
+      console.log('✅ Database connection closed');
+    }
+  }
 }
 
-export default new DatabaseService();
+// Export types
+export type { ClothingItemData, UserData };
+
+// Export singleton instance
+export default DatabaseService.getInstance();

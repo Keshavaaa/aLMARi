@@ -8,7 +8,10 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
+  TextInput,
 } from 'react-native';
+import { router } from 'expo-router';
+import DatabaseService from '../services/DatabaseService';
 import {
   StickyNote,
   ToggleLeft,
@@ -16,7 +19,6 @@ import {
   Trash2,
 } from 'lucide-react-native';
 import Modal from 'react-native-modal';
-import { TextInput } from 'react-native';
 import {
   Colors,
   Typography,
@@ -25,6 +27,7 @@ import {
   Shadows,
   IconSizes,
 } from '../constants/Design';
+import wardrobeService from '../services/WardrobeService';
 
 interface WardrobeItemProps {
   item: {
@@ -52,12 +55,33 @@ export default function WardrobeItem({
 
   /**
    * Toggle laundry status for the clothing item
-   * In a real app, this would update your local storage or backend
    */
-  const toggleLaundry = () => {
-    console.log(`Toggle laundry for item ${item.id}`);
-    // TODO: Implement actual laundry status update
-    onUpdate();
+  const toggleLaundry = async () => {
+    try {
+      console.log(`Toggle laundry for item ${item.id}`);
+
+      // Import at the top: import { updateWardrobeItem } from '../services/WardrobeService';
+      const wardrobeService = require('../services/WardrobeService').default;
+
+      // Update the item's laundry status
+      await wardrobeService.updateWardrobeItem(item.id, {
+        ...item,
+        inLaundry: !item.inLaundry,
+      });
+
+      // Refresh the wardrobe list
+      onUpdate();
+
+      Alert.alert(
+        'Updated',
+        item.inLaundry
+          ? `${item.name} removed from laundry`
+          : `${item.name} added to laundry`,
+      );
+    } catch (error) {
+      console.error('Failed to toggle laundry status:', error);
+      Alert.alert('Error', 'Failed to update laundry status');
+    }
   };
 
   /**
@@ -75,10 +99,57 @@ export default function WardrobeItem({
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
-            console.log(`Delete item ${item.id}`);
-            // TODO: Implement actual item deletion
-            onUpdate();
+          onPress: async () => {
+            try {
+              console.log(`🗑️ Deleting item ${item.id}`);
+
+              // Import SQLite
+              const SQLite = require('expo-sqlite');
+              const db = await DatabaseService.getDatabase();
+
+              // Get image URI first
+              const dbItem = (await db.getFirstAsync(
+                'SELECT image_uri FROM clothing_items WHERE id = ?',
+                [parseInt(item.id)],
+              )) as any;
+
+              console.log('📷 Image URI to delete:', dbItem?.image_uri);
+
+              // Delete from database
+              await db.runAsync('DELETE FROM clothing_items WHERE id = ?', [
+                parseInt(item.id),
+              ]);
+              console.log('✅ Deleted from database');
+
+              // Delete image file
+              if (dbItem?.image_uri) {
+                try {
+                  const FileSystem = require('expo-file-system/legacy');
+                  const fileInfo = await FileSystem.getInfoAsync(
+                    dbItem.image_uri,
+                  );
+                  if (fileInfo.exists) {
+                    await FileSystem.deleteAsync(dbItem.image_uri);
+                    console.log('✅ Image file deleted');
+                  }
+                } catch (fileError) {
+                  console.error('⚠️ Failed to delete image file:', fileError);
+                }
+              }
+
+              console.log('🔄 Calling onUpdate to refresh list');
+
+              // Refresh the wardrobe list
+              onUpdate();
+
+              Alert.alert(
+                'Deleted',
+                `${item.name} has been removed from your wardrobe`,
+              );
+            } catch (error) {
+              console.error('❌ Failed to delete item:', error);
+              Alert.alert('Error', 'Failed to delete item. Please try again.');
+            }
           },
         },
       ],
@@ -88,14 +159,31 @@ export default function WardrobeItem({
   /**
    * Save note to the clothing item
    */
-  const saveNote = () => {
-    console.log(`Save note for item ${item.id}: ${note}`);
-    // TODO: Implement actual note saving to storage
-    setShowNoteModal(false);
-    onUpdate();
+  const saveNote = async () => {
+    try {
+      console.log(`Save note for item ${item.id}: ${note}`);
+
+      // Import at the top: import { updateWardrobeItem } from '../services/WardrobeService';
+      const wardrobeService = require('../services/WardrobeService').default;
+
+      // Update the item's notes
+      await wardrobeService.updateWardrobeItem(item.id, {
+        ...item,
+        notes: note,
+      });
+
+      setShowNoteModal(false);
+
+      // Refresh the wardrobe list
+      onUpdate();
+
+      Alert.alert('Saved', 'Note updated successfully');
+    } catch (error) {
+      console.error('Failed to save note:', error);
+      Alert.alert('Error', 'Failed to save note. Please try again.');
+    }
   };
 
-  // Dynamic styles based on view mode
   const cardStyle = viewMode === 'grid' ? styles.gridCard : styles.listCard;
   const imageStyle = viewMode === 'grid' ? styles.gridImage : styles.listImage;
   const contentStyle =
@@ -103,108 +191,101 @@ export default function WardrobeItem({
 
   return (
     <>
-      <TouchableOpacity style={cardStyle} activeOpacity={0.7}>
-        {/* Item Image */}
-        <View style={styles.imageContainer}>
-          <Image
-            source={{ uri: item.imageUri }}
-            style={imageStyle}
-          />
-
-          {/* Laundry Badge - Only show when item is in laundry */}
-          {item.inLaundry && (
-            <View style={styles.laundryBadge}>
-              <Text style={styles.laundryText}>In Laundry</Text>
-            </View>
-          )}
-        </View>
-
-        {/* Item Information */}
-        <View style={contentStyle}>
-          <View style={styles.itemInfo}>
-            <Text style={styles.itemName} numberOfLines={1}>
-              {item.name}
-            </Text>
-
-            <Text style={styles.itemCategory}>{item.category}</Text>
-
-            {/* Additional details for list view */}
-            {viewMode === 'list' && (
-              <View style={styles.itemDetails}>
-                <Text style={styles.itemDetail}>
-                  {item.brand} • {item.size}
-                </Text>
-                <Text
-                  style={[
-                    styles.itemDetail,
-                    { color: item.color.toLowerCase() },
-                  ]}
-                >
-                  {item.color}
-                </Text>
+      <View style={cardStyle}>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => {
+            router.push({
+              pathname: '/item-view', // ✅ Changed from '/item-details'
+              params: {
+                itemId: item.id, // ✅ Changed from multiple params to just ID
+              },
+            });
+          }}
+        >
+          <View style={styles.imageContainer}>
+            <Image source={{ uri: item.imageUri }} style={imageStyle} />
+            {item.inLaundry && (
+              <View style={styles.laundryBadge}>
+                <Text style={styles.laundryText}>In Laundry</Text>
               </View>
             )}
           </View>
 
-          {/* Action Buttons */}
-          <View style={styles.itemActions}>
-            {/* Notes Button */}
-            <TouchableOpacity
-              style={[
-                styles.actionButton,
-                item.notes ? styles.actionButtonActive : null,
-              ]}
-              onPress={() => setShowNoteModal(true)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} // Better touch area
-            >
-              <StickyNote
-                size={IconSizes.sm}
-                color={item.notes ? Colors.warning : Colors.neutral[400]}
-                strokeWidth={2}
-              />
-            </TouchableOpacity>
-
-            {/* Laundry Toggle Button */}
-            <TouchableOpacity
-              style={[
-                styles.actionButton,
-                item.inLaundry ? styles.actionButtonActive : null,
-              ]}
-              onPress={toggleLaundry}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              {item.inLaundry ? (
-                <ToggleRight
-                  size={IconSizes.sm}
-                  color={Colors.info}
-                  strokeWidth={2}
-                />
-              ) : (
-                <ToggleLeft
-                  size={IconSizes.sm}
-                  color={Colors.neutral[400]}
-                  strokeWidth={2}
-                />
+          <View style={contentStyle}>
+            <View style={styles.itemInfo}>
+              <Text style={styles.itemName} numberOfLines={1}>
+                {item.name}
+              </Text>
+              <Text style={styles.itemCategory}>{item.category}</Text>
+              {viewMode === 'list' && (
+                <View style={styles.itemDetails}>
+                  <Text style={styles.itemDetail}>
+                    {item.brand} • {item.size}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.itemDetail,
+                      { color: item.color.toLowerCase() },
+                    ]}
+                  >
+                    {item.color}
+                  </Text>
+                </View>
               )}
-            </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
 
-            {/* Delete Button */}
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={handleDelete}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Trash2
+        <View style={styles.itemActions}>
+          <TouchableOpacity
+            style={[
+              styles.actionButton,
+              item.notes ? styles.actionButtonActive : null,
+            ]}
+            onPress={() => setShowNoteModal(true)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <StickyNote
+              size={IconSizes.sm}
+              color={item.notes ? Colors.warning : Colors.neutral[400]}
+              strokeWidth={2}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.actionButton,
+              item.inLaundry ? styles.actionButtonActive : null,
+            ]}
+            onPress={toggleLaundry}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            {item.inLaundry ? (
+              <ToggleRight
                 size={IconSizes.sm}
-                color={Colors.error}
+                color={Colors.info}
                 strokeWidth={2}
               />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </TouchableOpacity>
+            ) : (
+              <ToggleLeft
+                size={IconSizes.sm}
+                color={Colors.neutral[400]}
+                strokeWidth={2}
+              />
+            )}
+          </TouchableOpacity>
 
-      {/* Notes Modal */}
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={handleDelete}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Trash2 size={IconSizes.sm} color={Colors.error} strokeWidth={2} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
       <Modal
         isVisible={showNoteModal}
         onBackdropPress={() => setShowNoteModal(false)}
@@ -216,13 +297,11 @@ export default function WardrobeItem({
         animationOut="slideOutDown"
       >
         <View style={styles.modalContent}>
-          {/* Modal Header */}
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Add Note</Text>
             <Text style={styles.modalSubtitle}>for {item.name}</Text>
           </View>
 
-          {/* Note Input */}
           <TextInput
             style={styles.noteInput}
             value={note}
@@ -232,13 +311,11 @@ export default function WardrobeItem({
             multiline
             numberOfLines={4}
             textAlignVertical="top"
-            maxLength={200} // Reasonable character limit
+            maxLength={200}
           />
 
-          {/* Character Counter */}
           <Text style={styles.characterCounter}>{note.length}/200</Text>
 
-          {/* Modal Actions */}
           <View style={styles.modalActions}>
             <TouchableOpacity
               style={styles.cancelButton}
@@ -246,7 +323,6 @@ export default function WardrobeItem({
             >
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
-
             <TouchableOpacity style={styles.saveButton} onPress={saveNote}>
               <Text style={styles.saveButtonText}>Save Note</Text>
             </TouchableOpacity>
@@ -258,7 +334,6 @@ export default function WardrobeItem({
 }
 
 const styles = StyleSheet.create({
-  // Grid View Card
   gridCard: {
     backgroundColor: Colors.background.card,
     borderRadius: BorderRadius.md,
@@ -269,8 +344,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border.light,
   },
-
-  // List View Card
   listCard: {
     backgroundColor: Colors.background.card,
     borderRadius: BorderRadius.md,
@@ -282,71 +355,44 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border.light,
   },
-
-  // Image Container
-  imageContainer: {
-    position: 'relative',
-  },
-
-  // Grid Image
+  imageContainer: { position: 'relative' },
   gridImage: {
     width: '100%',
-    height: 120,
+    aspectRatio: 3 / 4,
     borderRadius: BorderRadius.sm,
     backgroundColor: Colors.neutral[100],
-    resizeMode: 'cover',
+    resizeMode: 'contain',
   },
-
-  // List Image
   listImage: {
     width: 80,
-    height: 80,
+    height: 100,
     borderRadius: BorderRadius.sm,
     backgroundColor: Colors.neutral[100],
     marginRight: Spacing.md,
-    resizeMode: 'cover',
+    resizeMode: 'contain',
   },
-
-  // Content Areas
-  gridContent: {
-    marginTop: Spacing.sm,
-  },
-
-  listContent: {
-    flex: 1,
-  },
-
-  // Item Information
-  itemInfo: {
-    flex: 1,
-  },
-
+  gridContent: { marginTop: Spacing.sm },
+  listContent: { flex: 1 },
+  itemInfo: { flex: 1 },
   itemName: {
     fontSize: Typography.sizes.sm,
     fontWeight: Typography.weights.semibold,
     color: Colors.text.primary,
     marginBottom: 2,
   },
-
   itemCategory: {
     fontSize: Typography.sizes.xs,
     color: Colors.primary[600],
     fontWeight: Typography.weights.medium,
     textTransform: 'capitalize',
   },
-
-  itemDetails: {
-    marginTop: Spacing.xs,
-  },
-
+  itemDetails: { marginTop: Spacing.xs },
   itemDetail: {
     fontSize: Typography.sizes.xs,
     color: Colors.text.secondary,
     marginBottom: 2,
     fontWeight: Typography.weights.normal,
   },
-
-  // Action Buttons
   itemActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -356,7 +402,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: Colors.border.light,
   },
-
   actionButton: {
     padding: Spacing.sm,
     borderRadius: BorderRadius.sm,
@@ -365,12 +410,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  actionButtonActive: {
-    backgroundColor: Colors.primary[50],
-  },
-
-  // Laundry Badge
+  actionButtonActive: { backgroundColor: Colors.primary[50] },
   laundryBadge: {
     position: 'absolute',
     top: Spacing.xs,
@@ -381,19 +421,12 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     ...Shadows.sm,
   },
-
   laundryText: {
     fontSize: Typography.sizes.xs,
     color: Colors.text.inverse,
     fontWeight: Typography.weights.semibold,
   },
-
-  // Modal Styles
-  modal: {
-    justifyContent: 'flex-end',
-    margin: 0,
-  },
-
+  modal: { justifyContent: 'flex-end', margin: 0 },
   modalContent: {
     backgroundColor: Colors.background.primary,
     borderTopLeftRadius: BorderRadius.xl,
@@ -401,24 +434,17 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     maxHeight: '80%',
   },
-
-  modalHeader: {
-    marginBottom: Spacing.lg,
-    alignItems: 'center',
-  },
-
+  modalHeader: { marginBottom: Spacing.lg, alignItems: 'center' },
   modalTitle: {
     fontSize: Typography.sizes.xl,
     fontWeight: Typography.weights.bold,
     color: Colors.text.primary,
   },
-
   modalSubtitle: {
     fontSize: Typography.sizes.sm,
     color: Colors.text.secondary,
     marginTop: 4,
   },
-
   noteInput: {
     backgroundColor: Colors.neutral[50],
     borderRadius: BorderRadius.md,
@@ -430,7 +456,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border.light,
   },
-
   characterCounter: {
     fontSize: Typography.sizes.xs,
     color: Colors.text.tertiary,
@@ -438,14 +463,11 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
     marginBottom: Spacing.lg,
   },
-
-  // Modal Actions
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: Spacing.md,
   },
-
   cancelButton: {
     flex: 1,
     paddingVertical: Spacing.md,
@@ -454,7 +476,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.neutral[100],
     alignItems: 'center',
   },
-
   saveButton: {
     flex: 1,
     paddingVertical: Spacing.md,
@@ -463,13 +484,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary[500],
     alignItems: 'center',
   },
-
   cancelButtonText: {
     fontSize: Typography.sizes.md,
     fontWeight: Typography.weights.semibold,
     color: Colors.text.secondary,
   },
-
   saveButtonText: {
     fontSize: Typography.sizes.md,
     fontWeight: Typography.weights.semibold,

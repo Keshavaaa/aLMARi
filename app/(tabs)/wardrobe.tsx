@@ -11,6 +11,7 @@ import {
   Alert,
   RefreshControl,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Search,
@@ -24,7 +25,7 @@ import {
 } from 'lucide-react-native';
 import { router } from 'expo-router';
 import Modal from 'react-native-modal';
-
+import * as SQLite from 'expo-sqlite';
 // Import our enhanced types
 import {
   ClothingItem,
@@ -35,13 +36,15 @@ import {
   FormalityLevel,
   Season,
 } from '../../types/clothing';
-
-// Import services (we'll enhance these next)
+import { AppState } from 'react-native'; // Add to existing react-native imports
 import {
-  getWardrobeItems,
+  getStoredWardrobeItems,
   deleteWardrobeItem,
-} from '../../services/WardrobeService';
-
+} from '../../services/WardrobeStorage';  // Changed service name too!
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback } from 'react';
+import DatabaseService from '../../services/DatabaseService';
+import { deleteImageFile } from '../../services/ImageProcessingService';
 // Import our design system
 import {
   Colors,
@@ -90,6 +93,19 @@ export default function Wardrobe() {
   useEffect(() => {
     loadWardrobeItems();
   }, []);
+  // ✅ ADD THIS: Auto-reload when screen becomes visible
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        console.log('🔄 App became active - reloading wardrobe');
+        loadWardrobeItems();
+      }
+    });
+
+    return () => {
+      subscription?.remove();
+    };
+  }, []);
 
   /**
    * Load wardrobe items from storage
@@ -98,7 +114,11 @@ export default function Wardrobe() {
   const loadWardrobeItems = async () => {
     try {
       setLoading(true);
-      const wardrobeItems = await getWardrobeItems();
+      // ✅ CORRECT
+      const wardrobeItems = await getStoredWardrobeItems({
+        includeSQLite: true, // Load from SQLite
+        includeAsyncStorage: false, // Don't load from AsyncStorage
+      });
 
       // Convert to our ClothingItem type (in case service returns different format)
       const typedItems: ClothingItem[] = wardrobeItems.map((item) => ({
@@ -108,21 +128,21 @@ export default function Wardrobe() {
         description: item.description || '',
         brand: item.brand,
         size: item.size || 'Unknown',
-        color: item.color || 'Unknown',
-        imageUri: item.imageUri || '',
-        originalImageUri: item.originalImageUri,
+        color: item.colors[0] || 'Unknown', // ✅ FIXED: colors is array
+        imageUri: item.image || '', // ✅ FIXED: field name
+        originalImageUri: item.image,
         inLaundry: item.inLaundry || false,
         notes: item.notes || '',
         dateAdded: item.dateAdded || new Date().toISOString(),
-        lastWorn: item.lastWorn,
-        timesWorn: item.timesWorn || 0,
-        tags: item.tags || [],
-        seasonality: item.seasonality || ['Summer'],
-        formality: item.formality || 'casual',
-        material: item.material,
-        price: item.price,
-        purchaseDate: item.purchaseDate,
-        isFavorite: item.isFavorite || false,
+        lastWorn: undefined, // Not stored yet
+        timesWorn: 0, // Not stored yet
+        tags: [], // Not stored yet
+        seasonality: ['summer'], // Default
+        formality: 'casual', // Default
+        material: undefined,
+        price: undefined,
+        purchaseDate: undefined,
+        isFavorite: false,
       }));
 
       setItems(typedItems);
@@ -161,10 +181,33 @@ export default function Wardrobe() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await deleteWardrobeItem(itemId);
-              await loadWardrobeItems(); // Refresh the list
-              Alert.alert('Success', 'Item deleted from wardrobe');
+              // ✅ Use shared database instance instead of opening new connection
+              const db = DatabaseService.getDatabase();
+
+              // ✅ Step 1: Get the item to find image URI
+              const item = (await db.getFirstAsync(
+                'SELECT image_uri FROM clothing_items WHERE id = ?',
+                [parseInt(itemId)],
+              )) as any;
+
+              // ✅ Step 2: Delete image file from storage if it exists
+              if (item?.image_uri) {
+                const fileSystem = require('expo-file-system');
+                await fileSystem.deleteAsync(item.image_uri, {
+                  idempotent: true,
+                });
+              }
+
+              // ✅ Step 3: Delete from database
+              await db.runAsync('DELETE FROM clothing_items WHERE id = ?', [
+                parseInt(itemId),
+              ]);
+
+              // ✅ Step 4: Refresh the UI
+              console.log(`Item "${itemName}" deleted successfully`);
+              // Call your function to reload items list here
             } catch (error) {
+              console.error('Delete failed:', error);
               Alert.alert('Error', 'Failed to delete item. Please try again.');
             }
           },
@@ -363,7 +406,9 @@ export default function Wardrobe() {
           )}
         </View>
       </View>
-
+      <TouchableOpacity>
+        <Text style={{ color: 'white', fontSize: 12 }}>Clear Old Data</Text>
+      </TouchableOpacity>
       {/* Statistics Row */}
       <View style={styles.statsContainer}>
         <StatCard
@@ -543,7 +588,7 @@ const EmptyState = ({
   onClearFilters: () => void;
 }) => (
   <View style={styles.centerContainer}>
-    <Text style={styles.emptyIcon}>{hasFilters ? '🔍' : '👔'}</Text>
+    <Text style={styles.emptyIcon}>{hasFilters ? '🔍' : ''}</Text>
     <Text style={styles.emptyTitle}>
       {hasFilters
         ? 'No items match your filters'
@@ -871,13 +916,15 @@ const styles = {
 
   // Category styles
   categoryScroll: {
-    maxHeight: 50,
+    maxHeight: 60, // ✅ Increased from 50 to 60
     marginBottom: Spacing.md,
   },
 
   categoryScrollContainer: {
     paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs, // ✅ ADD THIS LINE - adds vertical padding
     gap: Spacing.sm,
+    alignItems: 'center' as const, // ✅ ADD THIS LINE - centers items vertically
   },
 
   categoryChip: {
@@ -887,6 +934,8 @@ const styles = {
     borderRadius: BorderRadius.full,
     borderWidth: 1,
     borderColor: Colors.border.light,
+    height: 36, // ✅ ADD THIS LINE - fixed height
+    justifyContent: 'center' as const, // ✅ ADD THIS LINE - centers text
   },
 
   categoryChipSelected: {

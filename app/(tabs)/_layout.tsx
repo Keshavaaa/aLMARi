@@ -1,28 +1,25 @@
 // app/(tabs)/_layout.tsx
 import { Tabs } from 'expo-router';
-import { Home, Shirt, Camera, User, Sparkles } from 'lucide-react-native';
+import { Home, Container, Plus, User, Sparkles } from 'lucide-react-native';
 import { Colors, Layout, Typography, IconSizes } from '../../constants/Design';
-import { Platform } from 'react-native';
+import { Platform, View, StyleSheet } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        // Hide header since we'll handle it in individual screens
         headerShown: false,
-
-        // Tab bar styling using our design system
-        tabBarActiveTintColor: Colors.primary[500], // Main brand purple
-        tabBarInactiveTintColor: Colors.neutral[400], // Neutral gray for inactive
+        tabBarActiveTintColor: Colors.primary[500],
+        tabBarInactiveTintColor: Colors.neutral[400],
 
         tabBarStyle: {
-          backgroundColor: Colors.background.primary, // Clean white background
+          backgroundColor: Colors.background.primary,
           borderTopWidth: 1,
-          borderTopColor: Colors.border.light, // Light border
+          borderTopColor: Colors.border.light,
           paddingTop: 0,
-          paddingBottom: 8, // Slight padding for touch comfort
-          height: Layout.tabBar.height, // Consistent height from design system
-          // Add subtle shadow for depth
+          paddingBottom: 8,
+          height: Layout.tabBar.height,
           ...Platform.select({
             ios: {
               shadowColor: Colors.neutral[900],
@@ -37,13 +34,12 @@ export default function TabLayout() {
         },
 
         tabBarLabelStyle: {
-          fontSize: Typography.sizes.xs, // 12px from design system
-          fontWeight: Typography.weights.medium, // 500 weight
+          fontSize: Typography.sizes.xs,
+          fontWeight: Typography.weights.medium,
           marginTop: 4,
-          fontFamily: 'System', // Will use system font
+          fontFamily: 'System',
         },
 
-        // Consistent icon sizing
         tabBarIconStyle: {
           marginBottom: 2,
         },
@@ -70,7 +66,7 @@ export default function TabLayout() {
         options={{
           title: 'Wardrobe',
           tabBarIcon: ({ color, focused }) => (
-            <Shirt
+            <Container
               size={focused ? IconSizes.lg : IconSizes.md}
               color={color}
               strokeWidth={focused ? 2.5 : 2}
@@ -79,24 +75,37 @@ export default function TabLayout() {
         }}
       />
 
-      {/* Add Clothes - Primary action (camera) */}
+      {/* Add Clothes - PRIMARY ELEVATED BUTTON WITH GRADIENT */}
       <Tabs.Screen
         name="camera"
         options={{
-          title: 'Add Item',
-          tabBarIcon: ({ color, focused }) => (
-            <Camera
-              size={focused ? IconSizes.lg : IconSizes.md}
-              color={color}
-              strokeWidth={focused ? 2.5 : 2}
-            />
+          title: '',
+          tabBarIcon: ({ focused }) => (
+            <View style={styles.centerButtonContainer}>
+              <LinearGradient
+                colors={['#CD01FE', '#8C00FF', '#6500F1']} 
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={[
+                  styles.centerButton,
+                  focused && styles.centerButtonActive,
+                ]}
+              >
+                <Plus
+                  size={32}
+                  color={Colors.background.primary}
+                  strokeWidth={3}
+                />
+              </LinearGradient>
+            </View>
           ),
+          tabBarLabel: () => null,
         }}
       />
 
       {/* Outfits - AI recommendations and outfit planning */}
       <Tabs.Screen
-        name="outfit" // Changed from "outfits" to match your file name
+        name="outfit"
         options={{
           title: 'Outfits',
           tabBarIcon: ({ color, focused }) => (
@@ -118,7 +127,7 @@ export default function TabLayout() {
             <User
               size={focused ? IconSizes.lg : IconSizes.md}
               color={color}
-              strokeWidth={focused ? 2.5 : 2}
+              strokeWidth={focused ? 2.1 : 2}
             />
           ),
         }}
@@ -126,3 +135,37 @@ export default function TabLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  centerButtonContainer: {
+    position: 'absolute',
+    top: -27, //value to raise/lower the button
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  centerButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 5,
+    borderColor: Colors.background.primary,
+    ...Platform.select({
+      ios: {
+        shadowColor: Colors.primary[500],
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 12,
+      },
+    }),
+  },
+
+  centerButtonActive: {
+    transform: [{ scale: 1.05 }],
+  },
+});

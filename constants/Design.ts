@@ -7,13 +7,32 @@ export const Colors = {
     200: '#DDD6FE',  // Lighter purple for borders
     300: '#C4B5FD',  // Medium light purple
     400: '#A78BFA',  // Medium purple
-    500: '#8B5CF6',  // Main brand purple (your primary)
+    500: '#8C00FF',  // Main brand purple (your primary)
     600: '#7C3AED',  // Darker purple for hover states
     700: '#6D28D9',  // Dark purple for active states
     800: '#5B21B6',  // Very dark purple
     900: '#4C1D95'   // Darkest purple for text
   },
   
+  // Magenta accent (left side of gradient)
+  accent: {
+    500: '#CD01FE',  // Vibrant magenta
+    600: '#9800F7',  // Purple-magenta
+  },
+  // Secondary Brand Color - Tropical Wood Brown (keeping this)
+  secondary: {
+    50: '#FAF7F5',
+    100: '#F5EFE9',
+    200: '#E8DDD2',
+    300: '#D4C3B3',
+    400: '#B8A091',
+    500: '#603B2A',  // Tropical Wood Brown
+    600: '#52321F',
+    700: '#442916',
+    800: '#36200F',
+    900: '#281708'
+  },
+
   // Neutral Grays - Professional and clean
   neutral: {
     50: '#FAFAFA',   // Almost white background
@@ -48,7 +67,8 @@ export const Colors = {
     secondary: '#525252',  // Secondary text
     tertiary: '#A3A3A3',   // Subtle text
     inverse: '#FFFFFF',    // White text on dark backgrounds
-    brand: '#6D28D9',      // Brand colored text
+    brand: '#8C00FF',      // ✅ Electric purple
+    accent: '#603B2A',     // Brown accent
   },
 
   // Border Colors
@@ -82,12 +102,13 @@ export const Typography = {
     extrabold: '800' as const
   },
   
-  // Brand Typography for aLMARi logo/branding
+  // Brand Typography for aLMARi logo
   brand: {
-    fontFamily: 'System', // Will use your custom Centaur font when loaded
+    fontFamily: 'System',
     fontSize: 32,
     fontWeight: '300' as const,
-    color: Colors.primary[500],
+    primaryColor: '#8C00FF',    // ✅ Electric purple for 'a' and 'i'
+    secondaryColor: '#603B2A',  // Brown for 'LMAR'
     letterSpacing: 1.2,
   },
   
@@ -129,6 +150,7 @@ export const BorderRadius = {
   md: 12,      // Cards, medium components
   lg: 16,      // Large cards
   xl: 24,      // Hero cards
+  xxl: 32,     // Large modals
   full: 9999,  // Circular elements
 };
 
@@ -227,4 +249,5 @@ export const IconSizes = {
   lg: 24,
   xl: 32,
   xxl: 40,
+  xxs : 48,
 };

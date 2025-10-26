@@ -6,8 +6,9 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
-  Switch,
   RefreshControl,
+  StyleSheet,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -16,25 +17,24 @@ import Modal from 'react-native-modal';
 // Icons
 import {
   User,
-  Settings,
   Heart,
   TrendingUp,
   Camera,
   Edit,
-  Bell,
   Palette,
   Target,
   BarChart3,
   Share2,
-  HelpCircle,
-  Shield,
-  Smartphone,
-  Moon,
-  Sun,
-  Globe,
-  ChevronRight,
+  Info,
   X,
   Check,
+  Sparkles,
+  Calendar,
+  ShoppingBag,
+  Award,
+  Mail,
+  Globe,
+  ChevronRight,
 } from 'lucide-react-native';
 
 // Types and Services
@@ -42,12 +42,8 @@ import {
   UserPreferences,
   WardrobeStats,
   ClothingItem,
-  FormalityLevel,
-  Season,
   COMMON_COLORS,
-  COMMON_BRANDS,
   BodyType,
-  SkinTone,
 } from '../../types/clothing';
 
 import { getWardrobeItems } from '../../services/WardrobeService';
@@ -62,53 +58,60 @@ import {
   IconSizes,
 } from '../../constants/Design';
 
-// Mock user data (replace with real user management later)
+/**
+ * Mock user data
+ * TODO: Replace with actual user management system
+ */
 const MOCK_USER = {
-  name: 'Fashion Enthusiast',
-  email: 'user@almari.app',
-  joinDate: '2024-01-15',
+  name: 'User',
+  email: 'user@example.com',
+  joinDate: '2025-09-15',
   avatar: null,
-  bio: 'Building my perfect wardrobe with AI',
 };
 
-const DEFAULT_PREFERENCES: UserPreferences = {
-  favoriteColors: ['Blue', 'White', 'Black'],
-  preferredBrands: ['Uniqlo', 'Zara'],
-  avoidedMaterials: ['Wool'],
-  stylePreference: 'minimalist',
-  formalityPreference: ['casual', 'smart-casual'],
-  seasonalPreferences: {
-    Summer: ['Tops', 'Shorts', 'Dresses'],
-    Winter: ['Outerwear', 'Sweaters'],
-    Spring: ['Light Jackets', 'Jeans'],
-    Fall: ['Cardigans', 'Boots'],
-  },
-  bodyType: 'rectangle',
-  skinTone: 'neutral',
-  preferredFit: 'fitted',
-};
+/**
+ * Modal state type
+ */
+type SettingsModal = 'preferences' | 'about' | null;
 
-type SettingsModal = 'preferences' | 'notifications' | 'display' | null;
-
+/**
+ * ProfileScreen Component
+ * Displays wardrobe statistics, preferences, and app info
+ */
 export default function ProfileScreen() {
-  // State management
+  // ============ STATE MANAGEMENT ============
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [userPreferences, setUserPreferences] =
-    useState<UserPreferences>(DEFAULT_PREFERENCES);
   const [wardrobeStats, setWardrobeStats] = useState<WardrobeStats | null>(
     null,
   );
   const [showModal, setShowModal] = useState<SettingsModal>(null);
+  const [userPreferences, setUserPreferences] = useState<UserPreferences>({
+    favoriteColors: [],
+    preferredBrands: [],
+    avoidedMaterials: [],
+    stylePreference: 'classic',
+    formalityPreference: ['casual'],
+    seasonalPreferences: {
+      spring: [],
+      summer: [],
+      fall: [],
+      winter: [],
+      'all-season': [],
+    },
+    bodyType: undefined,
+    skinTone: undefined,
+    preferredFit: 'fitted',
+  });
 
-  // Settings state
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [darkMode, setDarkMode] = useState(false);
-  const [autoBackup, setAutoBackup] = useState(true);
+  // ============ EFFECTS ============
 
   useEffect(() => {
     loadProfileData();
   }, []);
+
+  // ============ DATA LOADING ============
 
   /**
    * Load user profile data and wardrobe statistics
@@ -117,17 +120,19 @@ export default function ProfileScreen() {
     setLoading(true);
 
     try {
-      // Load wardrobe items and calculate stats
       const wardrobeItems = await getWardrobeItems();
       const stats = calculateWardrobeStats(wardrobeItems);
       setWardrobeStats(stats);
 
-      // Load user preferences from storage
-      // TODO: Implement actual user preferences loading
-      setUserPreferences(DEFAULT_PREFERENCES);
+      // TODO: Load saved preferences from AsyncStorage
+      // const savedPrefs = await AsyncStorage.getItem('userPreferences');
+      // if (savedPrefs) setUserPreferences(JSON.parse(savedPrefs));
     } catch (error) {
-      console.error('Failed to load profile data:', error);
-      Alert.alert('Error', 'Failed to load profile data. Please try again.');
+      console.error('❌ Failed to load profile data:', error);
+      Alert.alert(
+        'Error Loading Profile',
+        'Could not load your profile data. Please try again.',
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -135,14 +140,13 @@ export default function ProfileScreen() {
   };
 
   /**
-   * Calculate comprehensive wardrobe statistics
+   * Calculate wardrobe statistics
    */
   const calculateWardrobeStats = (items: ClothingItem[]): WardrobeStats => {
     const totalItems = items.length;
     const itemsInLaundry = items.filter((item) => item.inLaundry).length;
     const favoriteItems = items.filter((item) => item.isFavorite).length;
 
-    // Calculate items by category
     const itemsByCategory = items.reduce(
       (acc, item) => {
         acc[item.category] = (acc[item.category] || 0) + 1;
@@ -151,19 +155,16 @@ export default function ProfileScreen() {
       {} as Record<string, number>,
     );
 
-    // Find most and least worn items
     const sortedByWear = [...items].sort((a, b) => b.timesWorn - a.timesWorn);
     const mostWornItems = sortedByWear.slice(0, 5);
     const leastWornItems = sortedByWear.slice(-5).reverse();
 
-    // Recently added items (last 30 days)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const recentlyAdded = items.filter(
       (item) => new Date(item.dateAdded) > thirtyDaysAgo,
     );
 
-    // Calculate cost per wear for items with price
     const costPerWear = items.reduce(
       (acc, item) => {
         if (item.price && item.timesWorn > 0) {
@@ -186,9 +187,8 @@ export default function ProfileScreen() {
     };
   };
 
-  /**
-   * Handle pull-to-refresh
-   */
+  // ============ USER ACTIONS ============
+
   const onRefresh = () => {
     setRefreshing(true);
     loadProfileData();
@@ -196,38 +196,40 @@ export default function ProfileScreen() {
 
   /**
    * Save user preferences
+   * TODO: Implement AsyncStorage persistence
    */
   const savePreferences = async (newPreferences: UserPreferences) => {
     try {
-      // TODO: Save to local storage or API
+      // TODO: await AsyncStorage.setItem('userPreferences', JSON.stringify(newPreferences));
       setUserPreferences(newPreferences);
+
       Alert.alert(
         'Preferences Saved',
         'Your style preferences have been updated!',
       );
     } catch (error) {
-      Alert.alert('Error', 'Failed to save preferences. Please try again.');
+      console.error('❌ Failed to save preferences:', error);
+      Alert.alert(
+        'Save Failed',
+        'Could not save preferences. Please try again.',
+      );
     }
   };
 
   /**
-   * Handle edit profile
+   * Open email app for support
    */
-  const handleEditProfile = () => {
-    Alert.alert('Edit Profile', "Choose what you'd like to update:", [
-      {
-        text: 'Personal Info',
-        onPress: () => console.log('Edit personal info'),
-      },
-      { text: 'Style Preferences', onPress: () => setShowModal('preferences') },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+  const handleContactSupport = () => {
+    Linking.openURL('mailto:support@almari.app?subject=aLMARi Support Request');
   };
 
+  // ============ RENDER ============
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -237,30 +239,29 @@ export default function ProfileScreen() {
         }
       >
         {/* Profile Header */}
-        <ProfileHeader onEditProfile={handleEditProfile} />
+        <ProfileHeader user={MOCK_USER} />
 
         {/* Wardrobe Statistics */}
         {wardrobeStats && <WardrobeStatsSection stats={wardrobeStats} />}
 
+        {/* Insights */}
+        <InsightsSection stats={wardrobeStats} />
+
         {/* Quick Actions */}
         <QuickActionsSection />
 
-        {/* Settings Menu */}
-        <SettingsSection
-          notificationsEnabled={notificationsEnabled}
-          onNotificationsToggle={setNotificationsEnabled}
-          darkMode={darkMode}
-          onDarkModeToggle={setDarkMode}
-          autoBackup={autoBackup}
-          onAutoBackupToggle={setAutoBackup}
-          onOpenModal={setShowModal}
-        />
+        {/* Settings */}
+        <SettingsSection onOpenModal={setShowModal} />
+
+        {/* Support */}
+        <SupportSection onContactSupport={handleContactSupport} />
 
         {/* App Info */}
-        <AppInfoSection />
+        <AppInfoSection onOpenAbout={() => setShowModal('about')} />
       </ScrollView>
 
-      {/* Modals */}
+      {/* ============ MODALS ============ */}
+
       <StylePreferencesModal
         visible={showModal === 'preferences'}
         preferences={userPreferences}
@@ -268,59 +269,62 @@ export default function ProfileScreen() {
         onSave={savePreferences}
       />
 
-      <NotificationSettingsModal
-        visible={showModal === 'notifications'}
-        enabled={notificationsEnabled}
+      <AboutModal
+        visible={showModal === 'about'}
         onClose={() => setShowModal(null)}
-        onToggle={setNotificationsEnabled}
-      />
-
-      <DisplaySettingsModal
-        visible={showModal === 'display'}
-        darkMode={darkMode}
-        onClose={() => setShowModal(null)}
-        onDarkModeToggle={setDarkMode}
       />
     </SafeAreaView>
   );
 }
 
+// ============================================================================
+// SUB-COMPONENTS
+// ============================================================================
+
 /**
- * Profile Header Component
+ * ProfileHeader Component
  */
-const ProfileHeader = ({ onEditProfile }: { onEditProfile: () => void }) => (
+const ProfileHeader = ({ user }: { user: typeof MOCK_USER }) => (
   <View style={styles.profileHeader}>
+    {/* Avatar */}
     <View style={styles.avatarContainer}>
-      <User size={40} color={Colors.primary[600]} strokeWidth={2} />
+      <User size={48} color={Colors.primary[600]} strokeWidth={1.5} />
     </View>
 
-    <Text style={styles.userName}>{MOCK_USER.name}</Text>
-    <Text style={styles.userBio}>{MOCK_USER.bio}</Text>
-    <Text style={styles.joinDate}>
-      Member since{' '}
-      {new Date(MOCK_USER.joinDate).toLocaleDateString('en-US', {
-        month: 'long',
-        year: 'numeric',
-      })}
-    </Text>
+    {/* User Info */}
+    <Text style={styles.userName}>{user.name}</Text>
+    <Text style={styles.userEmail}>{user.email}</Text>
 
-    <TouchableOpacity style={styles.editButton} onPress={onEditProfile}>
-      <Edit size={16} color={Colors.text.inverse} strokeWidth={2} />
-      <Text style={styles.editButtonText}>Edit Profile</Text>
-    </TouchableOpacity>
+    {/* Join Date */}
+    <View style={styles.joinDateBadge}>
+      <Calendar size={14} color={Colors.text.secondary} />
+      <Text style={styles.joinDateText}>
+        Member since{' '}
+        {new Date(user.joinDate).toLocaleDateString('en-US', {
+          month: 'short',
+          year: 'numeric',
+        })}
+      </Text>
+    </View>
   </View>
 );
 
 /**
- * Wardrobe Statistics Section
+ * WardrobeStatsSection Component
  */
 const WardrobeStatsSection = ({ stats }: { stats: WardrobeStats }) => (
   <View style={styles.section}>
-    <Text style={styles.sectionTitle}>Your Wardrobe Stats</Text>
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>Wardrobe Overview</Text>
+      <TouchableOpacity onPress={() => router.push('/(tabs)/wardrobe')}>
+        <Text style={styles.sectionLink}>View All</Text>
+      </TouchableOpacity>
+    </View>
 
+    {/* Stats Grid */}
     <View style={styles.statsGrid}>
       <StatCard
-        icon={Camera}
+        icon={ShoppingBag}
         label="Total Items"
         value={stats.totalItems}
         color={Colors.primary[500]}
@@ -332,7 +336,7 @@ const WardrobeStatsSection = ({ stats }: { stats: WardrobeStats }) => (
         color={Colors.error}
       />
       <StatCard
-        icon={TrendingUp}
+        icon={Sparkles}
         label="Recently Added"
         value={stats.recentlyAdded.length}
         color={Colors.success}
@@ -346,176 +350,208 @@ const WardrobeStatsSection = ({ stats }: { stats: WardrobeStats }) => (
     </View>
 
     {/* Top Categories */}
-    <View style={styles.categoriesContainer}>
-      <Text style={styles.subsectionTitle}>Top Categories</Text>
+    <View style={styles.categoriesCard}>
+      <View style={styles.categoriesHeader}>
+        <BarChart3 size={20} color={Colors.primary[600]} />
+        <Text style={styles.categoriesTitle}>Top Categories</Text>
+      </View>
+
       {Object.entries(stats.itemsByCategory)
         .sort(([, a], [, b]) => b - a)
         .slice(0, 3)
-        .map(([category, count]) => (
-          <View key={category} style={styles.categoryItem}>
-            <Text style={styles.categoryName}>{category}</Text>
-            <Text style={styles.categoryCount}>{count} items</Text>
-          </View>
-        ))}
+        .map(([category, count], index) => {
+          const percentage = Math.round((count / stats.totalItems) * 100);
+          return (
+            <View key={category} style={styles.categoryRow}>
+              <View style={styles.categoryInfo}>
+                <Text style={styles.categoryRank}>#{index + 1}</Text>
+                <Text style={styles.categoryName}>{category}</Text>
+              </View>
+              <View style={styles.categoryMetrics}>
+                <Text style={styles.categoryCount}>{count} items</Text>
+                <Text style={styles.categoryPercentage}>({percentage}%)</Text>
+              </View>
+            </View>
+          );
+        })}
     </View>
   </View>
 );
 
 /**
- * Quick Actions Section
+ * InsightsSection Component
+ */
+const InsightsSection = ({ stats }: { stats: WardrobeStats | null }) => {
+  if (!stats) return null;
+
+  const leastWornCount = stats.leastWornItems.filter(
+    (item) => item.timesWorn === 0,
+  ).length;
+  const hasLeastWorn = leastWornCount > 0;
+
+  return (
+    <View style={styles.section}>
+      <View style={styles.sectionHeader}>
+        <View style={styles.sectionHeaderLeft}>
+          <Sparkles size={20} color={Colors.primary[600]} />
+          <Text style={styles.sectionTitle}>Insights</Text>
+        </View>
+      </View>
+
+      <View style={styles.insightCards}>
+        {/* Most Worn */}
+        {stats.mostWornItems[0] && (
+          <View style={styles.insightCard}>
+            <View style={styles.insightIcon}>
+              <TrendingUp size={20} color={Colors.success} strokeWidth={2} />
+            </View>
+            <View style={styles.insightContent}>
+              <Text style={styles.insightTitle}>Most Loved Item</Text>
+              <Text style={styles.insightText}>
+                Your{' '}
+                <Text style={styles.insightHighlight}>
+                  {stats.mostWornItems[0].name}
+                </Text>{' '}
+                has been worn{' '}
+                <Text style={styles.insightHighlight}>
+                  {stats.mostWornItems[0].timesWorn} times
+                </Text>
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Underutilized */}
+        {hasLeastWorn && (
+          <View style={styles.insightCard}>
+            <View
+              style={[
+                styles.insightIcon,
+                { backgroundColor: Colors.warning + '15' },
+              ]}
+            >
+              <Info size={20} color={Colors.warning} strokeWidth={2} />
+            </View>
+            <View style={styles.insightContent}>
+              <Text style={styles.insightTitle}>Underutilized Items</Text>
+              <Text style={styles.insightText}>
+                You have{' '}
+                <Text style={styles.insightHighlight}>
+                  {leastWornCount} items
+                </Text>{' '}
+                that haven't been worn yet
+              </Text>
+            </View>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+};
+
+/**
+ * QuickActionsSection Component
  */
 const QuickActionsSection = () => (
   <View style={styles.section}>
     <Text style={styles.sectionTitle}>Quick Actions</Text>
-    <View style={styles.quickActions}>
-      <QuickActionButton
+
+    <View style={styles.actionCards}>
+      <ActionCard
         icon={Camera}
-        label="Add Item"
+        title="Add New Item"
+        description="Capture and catalog clothing"
         onPress={() => router.push('/(tabs)/camera')}
         color={Colors.primary[500]}
       />
-      <QuickActionButton
-        icon={Heart}
-        label="Favorites"
-        onPress={() => router.push('/(tabs)/wardrobe')}
-        color={Colors.error}
-      />
-      <QuickActionButton
-        icon={BarChart3}
-        label="Analytics"
-        onPress={() =>
-          Alert.alert(
-            'Coming Soon',
-            'Analytics feature will be available soon!',
-          )
-        }
+      <ActionCard
+        icon={Sparkles}
+        title="Get Outfit Ideas"
+        description="AI-powered recommendations"
+        onPress={() => router.push('/(tabs)/outfit')}
         color={Colors.success}
       />
-      <QuickActionButton
-        icon={Share2}
-        label="Share"
-        onPress={() =>
-          Alert.alert('Coming Soon', 'Share feature will be available soon!')
-        }
-        color={Colors.warning}
+      <ActionCard
+        icon={Calendar}
+        title="Plan Outfits"
+        description="Schedule weekly outfits"
+        onPress={() => router.push('/calendar-screen')}
+        color={Colors.info}
+      />
+      <ActionCard
+        icon={Heart}
+        title="View Favorites"
+        description="Your loved items"
+        onPress={() => router.push('/(tabs)/wardrobe')}
+        color={Colors.error}
       />
     </View>
   </View>
 );
 
 /**
- * Settings Section
+ * SettingsSection Component
  */
 const SettingsSection = ({
-  notificationsEnabled,
-  onNotificationsToggle,
-  darkMode,
-  onDarkModeToggle,
-  autoBackup,
-  onAutoBackupToggle,
   onOpenModal,
 }: {
-  notificationsEnabled: boolean;
-  onNotificationsToggle: (value: boolean) => void;
-  darkMode: boolean;
-  onDarkModeToggle: (value: boolean) => void;
-  autoBackup: boolean;
-  onAutoBackupToggle: (value: boolean) => void;
   onOpenModal: (modal: SettingsModal) => void;
 }) => (
   <View style={styles.section}>
-    <Text style={styles.sectionTitle}>Settings</Text>
+    <Text style={styles.sectionTitle}>Preferences</Text>
 
-    <SettingsItem
-      icon={Palette}
-      title="Style Preferences"
-      subtitle="Colors, brands, and style preferences"
-      onPress={() => onOpenModal('preferences')}
-      showChevron
-    />
-
-    <SettingsItem
-      icon={Bell}
-      title="Notifications"
-      subtitle="Outfit reminders and style tips"
-      onPress={() => onOpenModal('notifications')}
-      rightElement={
-        <Switch
-          value={notificationsEnabled}
-          onValueChange={onNotificationsToggle}
-          trackColor={{ false: Colors.neutral[300], true: Colors.primary[200] }}
-          thumbColor={
-            notificationsEnabled ? Colors.primary[500] : Colors.neutral[500]
-          }
-        />
-      }
-    />
-
-    <SettingsItem
-      icon={darkMode ? Moon : Sun}
-      title="Appearance"
-      subtitle="Theme and display settings"
-      onPress={() => onOpenModal('display')}
-      rightElement={
-        <Switch
-          value={darkMode}
-          onValueChange={onDarkModeToggle}
-          trackColor={{ false: Colors.neutral[300], true: Colors.primary[200] }}
-          thumbColor={darkMode ? Colors.primary[500] : Colors.neutral[500]}
-        />
-      }
-    />
-
-    <SettingsItem
-      icon={Smartphone}
-      title="Auto Backup"
-      subtitle="Automatically backup your wardrobe"
-      rightElement={
-        <Switch
-          value={autoBackup}
-          onValueChange={onAutoBackupToggle}
-          trackColor={{ false: Colors.neutral[300], true: Colors.primary[200] }}
-          thumbColor={autoBackup ? Colors.primary[500] : Colors.neutral[500]}
-        />
-      }
-    />
-
-    <SettingsItem
-      icon={Shield}
-      title="Privacy & Security"
-      subtitle="Data protection and privacy settings"
-      onPress={() =>
-        Alert.alert('Coming Soon', 'Privacy settings will be available soon!')
-      }
-      showChevron
-    />
-
-    <SettingsItem
-      icon={HelpCircle}
-      title="Help & Support"
-      subtitle="FAQs, tutorials, and contact support"
-      onPress={() =>
-        Alert.alert('Coming Soon', 'Help center will be available soon!')
-      }
-      showChevron
-    />
+    <View style={styles.settingsGroup}>
+      <SettingsItem
+        icon={Palette}
+        title="Style Preferences"
+        subtitle="Favorite colors, style, and body type"
+        onPress={() => onOpenModal('preferences')}
+        showChevron
+      />
+    </View>
   </View>
 );
 
 /**
- * App Info Section
+ * SupportSection Component
  */
-const AppInfoSection = () => (
+const SupportSection = ({
+  onContactSupport,
+}: {
+  onContactSupport: () => void;
+}) => (
+  <View style={styles.section}>
+    <Text style={styles.sectionTitle}>Support</Text>
+
+    <View style={styles.settingsGroup}>
+      <SettingsItem
+        icon={Mail}
+        title="Contact Support"
+        subtitle="Get help via email"
+        onPress={onContactSupport}
+        showChevron
+      />
+    </View>
+  </View>
+);
+
+/**
+ * AppInfoSection Component
+ */
+const AppInfoSection = ({ onOpenAbout }: { onOpenAbout: () => void }) => (
   <View style={styles.appInfo}>
-    <Text style={styles.appVersion}>aLMARi v1.0.0</Text>
-    <Text style={styles.appDescription}>Made with ❤️ and AI</Text>
-    <Text style={styles.copyright}>© 2024 aLMARi. All rights reserved.</Text>
+    <TouchableOpacity onPress={onOpenAbout} style={styles.appInfoButton}>
+      <Text style={styles.appName}>aLMARi</Text>
+      <Text style={styles.appVersion}>Version 1.0.0</Text>
+      <Text style={styles.appTagline}>Your AI-Powered Digital Wardrobe</Text>
+    </TouchableOpacity>
   </View>
 );
 
-/**
- * Reusable Components
- */
+// ============================================================================
+// REUSABLE COMPONENTS
+// ============================================================================
+
 const StatCard = ({
   icon: Icon,
   label,
@@ -528,28 +564,33 @@ const StatCard = ({
   color: string;
 }) => (
   <View style={styles.statCard}>
-    <Icon size={IconSizes.lg} color={color} strokeWidth={2} />
+    <View style={[styles.statIconContainer, { backgroundColor: color + '15' }]}>
+      <Icon size={24} color={color} strokeWidth={2} />
+    </View>
     <Text style={[styles.statValue, { color }]}>{value}</Text>
     <Text style={styles.statLabel}>{label}</Text>
   </View>
 );
 
-const QuickActionButton = ({
+const ActionCard = ({
   icon: Icon,
-  label,
+  title,
+  description,
   onPress,
   color,
 }: {
   icon: any;
-  label: string;
+  title: string;
+  description: string;
   onPress: () => void;
   color: string;
 }) => (
-  <TouchableOpacity style={styles.quickActionButton} onPress={onPress}>
-    <View style={[styles.quickActionIcon, { backgroundColor: color + '15' }]}>
-      <Icon size={IconSizes.md} color={color} strokeWidth={2} />
+  <TouchableOpacity style={styles.actionCard} onPress={onPress}>
+    <View style={[styles.actionCardIcon, { backgroundColor: color + '15' }]}>
+      <Icon size={28} color={color} strokeWidth={2} />
     </View>
-    <Text style={styles.quickActionLabel}>{label}</Text>
+    <Text style={styles.actionCardTitle}>{title}</Text>
+    <Text style={styles.actionCardDescription}>{description}</Text>
   </TouchableOpacity>
 );
 
@@ -558,37 +599,44 @@ const SettingsItem = ({
   title,
   subtitle,
   onPress,
-  rightElement,
   showChevron = false,
 }: {
   icon: any;
   title: string;
   subtitle?: string;
   onPress?: () => void;
-  rightElement?: React.ReactNode;
   showChevron?: boolean;
 }) => (
   <TouchableOpacity
     style={styles.settingsItem}
     onPress={onPress}
     disabled={!onPress}
+    activeOpacity={0.7}
   >
-    <View style={styles.settingsIcon}>
-      <Icon size={IconSizes.md} color={Colors.primary[600]} strokeWidth={2} />
+    <View style={styles.settingsItemLeft}>
+      <View style={styles.settingsIconContainer}>
+        <Icon size={20} color={Colors.primary[600]} strokeWidth={2} />
+      </View>
+      <View style={styles.settingsItemContent}>
+        <Text style={styles.settingsItemTitle}>{title}</Text>
+        {subtitle && (
+          <Text style={styles.settingsItemSubtitle}>{subtitle}</Text>
+        )}
+      </View>
     </View>
-    <View style={styles.settingsContent}>
-      <Text style={styles.settingsTitle}>{title}</Text>
-      {subtitle && <Text style={styles.settingsSubtitle}>{subtitle}</Text>}
-    </View>
-    {rightElement ||
-      (showChevron && (
-        <ChevronRight size={IconSizes.md} color={Colors.neutral[400]} />
-      ))}
+
+    {showChevron && (
+      <ChevronRight size={20} color={Colors.neutral[400]} strokeWidth={2} />
+    )}
   </TouchableOpacity>
 );
 
+// ============================================================================
+// MODALS
+// ============================================================================
+
 /**
- * Style Preferences Modal
+ * StylePreferencesModal
  */
 const StylePreferencesModal = ({
   visible,
@@ -601,7 +649,33 @@ const StylePreferencesModal = ({
   onClose: () => void;
   onSave: (preferences: UserPreferences) => void;
 }) => {
-  const [tempPreferences, setTempPreferences] = useState(preferences);
+  const defaultPrefs: UserPreferences = {
+    favoriteColors: [],
+    preferredBrands: [],
+    avoidedMaterials: [],
+    stylePreference: 'classic',
+    formalityPreference: ['casual'],
+    seasonalPreferences: {
+      spring: [],
+      summer: [],
+      fall: [],
+      winter: [],
+      'all-season': [],
+    },
+    bodyType: undefined,
+    skinTone: undefined,
+    preferredFit: 'fitted',
+  };
+
+  const [tempPreferences, setTempPreferences] = useState(
+    preferences || defaultPrefs,
+  );
+
+  useEffect(() => {
+    if (visible) {
+      setTempPreferences(preferences || defaultPrefs);
+    }
+  }, [visible, preferences]);
 
   const handleSave = () => {
     onSave(tempPreferences);
@@ -630,19 +704,29 @@ const StylePreferencesModal = ({
       style={styles.modal}
       swipeDirection="down"
       onSwipeComplete={onClose}
+      avoidKeyboard
     >
       <View style={styles.modalContent}>
         <View style={styles.modalHeader}>
-          <Text style={styles.modalTitle}>Style Preferences</Text>
+          <View style={styles.modalHeaderLeft}>
+            <Palette size={24} color={Colors.primary[600]} />
+            <Text style={styles.modalTitle}>Style Preferences</Text>
+          </View>
           <TouchableOpacity onPress={onClose}>
-            <X size={IconSizes.lg} color={Colors.neutral[600]} />
+            <X size={24} color={Colors.neutral[600]} strokeWidth={2} />
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.modalBody}>
+        <ScrollView
+          style={styles.modalBody}
+          showsVerticalScrollIndicator={false}
+        >
           {/* Favorite Colors */}
           <View style={styles.preferenceSection}>
             <Text style={styles.preferenceSectionTitle}>Favorite Colors</Text>
+            <Text style={styles.preferenceSectionSubtitle}>
+              Select colors you love to wear
+            </Text>
             <View style={styles.colorGrid}>
               {COMMON_COLORS.map((color) => (
                 <TouchableOpacity
@@ -664,7 +748,11 @@ const StylePreferencesModal = ({
                     {color}
                   </Text>
                   {tempPreferences.favoriteColors.includes(color) && (
-                    <Check size={12} color={Colors.primary[500]} />
+                    <Check
+                      size={14}
+                      color={Colors.primary[500]}
+                      strokeWidth={3}
+                    />
                   )}
                 </TouchableOpacity>
               ))}
@@ -674,6 +762,9 @@ const StylePreferencesModal = ({
           {/* Style Preference */}
           <View style={styles.preferenceSection}>
             <Text style={styles.preferenceSectionTitle}>Style Preference</Text>
+            <Text style={styles.preferenceSectionSubtitle}>
+              Choose your dominant style aesthetic
+            </Text>
             <View style={styles.styleOptions}>
               {(
                 [
@@ -710,8 +801,9 @@ const StylePreferencesModal = ({
 
           {/* Body Type */}
           <View style={styles.preferenceSection}>
-            <Text style={styles.preferenceSectionTitle}>
-              Body Type (Optional)
+            <Text style={styles.preferenceSectionTitle}>Body Type</Text>
+            <Text style={styles.preferenceSectionSubtitle}>
+              Optional: helps with fit recommendations
             </Text>
             <View style={styles.bodyTypeOptions}>
               {(
@@ -750,11 +842,12 @@ const StylePreferencesModal = ({
         </ScrollView>
 
         <View style={styles.modalFooter}>
-          <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
-            <Text style={styles.cancelButtonText}>Cancel</Text>
+          <TouchableOpacity style={styles.modalCancelButton} onPress={onClose}>
+            <Text style={styles.modalCancelButtonText}>Cancel</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-            <Text style={styles.saveButtonText}>Save Preferences</Text>
+          <TouchableOpacity style={styles.modalSaveButton} onPress={handleSave}>
+            <Check size={18} color={Colors.text.inverse} strokeWidth={2} />
+            <Text style={styles.modalSaveButtonText}>Save Changes</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -763,449 +856,533 @@ const StylePreferencesModal = ({
 };
 
 /**
- * Notification Settings Modal
+ * AboutModal
  */
-const NotificationSettingsModal = ({
+const AboutModal = ({
   visible,
-  enabled,
   onClose,
-  onToggle,
 }: {
   visible: boolean;
-  enabled: boolean;
   onClose: () => void;
-  onToggle: (enabled: boolean) => void;
 }) => (
-  <Modal isVisible={visible} onBackdropPress={onClose} style={styles.modal}>
-    <View style={styles.modalContent}>
+  <Modal
+    isVisible={visible}
+    onBackdropPress={onClose}
+    style={styles.modal}
+    swipeDirection="down"
+    onSwipeComplete={onClose}
+  >
+    <View style={styles.smallModalContent}>
       <View style={styles.modalHeader}>
-        <Text style={styles.modalTitle}>Notification Settings</Text>
+        <View style={styles.modalHeaderLeft}>
+          <Info size={24} color={Colors.primary[600]} />
+          <Text style={styles.modalTitle}>About aLMARi</Text>
+        </View>
         <TouchableOpacity onPress={onClose}>
-          <X size={IconSizes.lg} color={Colors.neutral[600]} />
+          <X size={24} color={Colors.neutral[600]} strokeWidth={2} />
         </TouchableOpacity>
       </View>
 
       <View style={styles.modalBody}>
-        <Text style={styles.modalSubtitle}>
-          Stay updated with outfit recommendations and style tips
+        <View style={styles.aboutSection}>
+          <Text style={styles.aboutAppName}>aLMARi</Text>
+          <Text style={styles.aboutVersion}>Version 1.0.0</Text>
+          <Text style={styles.aboutTagline}>
+            Your AI-Powered Digital Wardrobe
+          </Text>
+        </View>
+
+        <Text style={styles.aboutDescription}>
+          aLMARi helps you organize your wardrobe, get AI-powered outfit
+          recommendations based on weather, and discover your personal style.
         </Text>
 
-        <View style={styles.notificationOption}>
-          <View>
-            <Text style={styles.notificationTitle}>Push Notifications</Text>
-            <Text style={styles.notificationSubtitle}>
-              Daily outfit suggestions and reminders
-            </Text>
-          </View>
-          <Switch
-            value={enabled}
-            onValueChange={onToggle}
-            trackColor={{
-              false: Colors.neutral[300],
-              true: Colors.primary[200],
-            }}
-            thumbColor={enabled ? Colors.primary[500] : Colors.neutral[500]}
-          />
-        </View>
+        <Text style={styles.aboutCopyright}>
+          © 2024 aLMARi. All rights reserved.{'\n'}
+          Made with ❤️ in India
+        </Text>
       </View>
     </View>
   </Modal>
 );
 
-/**
- * Display Settings Modal
- */
-const DisplaySettingsModal = ({
-  visible,
-  darkMode,
-  onClose,
-  onDarkModeToggle,
-}: {
-  visible: boolean;
-  darkMode: boolean;
-  onClose: () => void;
-  onDarkModeToggle: (enabled: boolean) => void;
-}) => (
-  <Modal isVisible={visible} onBackdropPress={onClose} style={styles.modal}>
-    <View style={styles.modalContent}>
-      <View style={styles.modalHeader}>
-        <Text style={styles.modalTitle}>Display Settings</Text>
-        <TouchableOpacity onPress={onClose}>
-          <X size={IconSizes.lg} color={Colors.neutral[600]} />
-        </TouchableOpacity>
-      </View>
+// ============================================================================
+// STYLES
+// ============================================================================
 
-      <View style={styles.modalBody}>
-        <Text style={styles.modalSubtitle}>
-          Customize your app's appearance
-        </Text>
-
-        <View style={styles.displayOption}>
-          <View style={styles.displayOptionContent}>
-            {darkMode ? (
-              <Moon size={20} color={Colors.primary[500]} />
-            ) : (
-              <Sun size={20} color={Colors.primary[500]} />
-            )}
-            <View style={styles.displayOptionText}>
-              <Text style={styles.displayTitle}>Dark Mode</Text>
-              <Text style={styles.displaySubtitle}>
-                {darkMode ? 'Dark theme enabled' : 'Light theme enabled'}
-              </Text>
-            </View>
-          </View>
-          <Switch
-            value={darkMode}
-            onValueChange={onDarkModeToggle}
-            trackColor={{
-              false: Colors.neutral[300],
-              true: Colors.primary[200],
-            }}
-            thumbColor={darkMode ? Colors.primary[500] : Colors.neutral[500]}
-          />
-        </View>
-      </View>
-    </View>
-  </Modal>
-);
-
-const styles = {
+const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background.secondary,
   },
 
   scrollContent: {
-    padding: Spacing.md,
+    paddingBottom: Spacing.xxl,
   },
 
   // Profile Header
   profileHeader: {
     backgroundColor: Colors.background.primary,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.lg,
-    alignItems: 'center' as const,
+    paddingVertical: Spacing.xl,
+    paddingHorizontal: Spacing.lg,
+    alignItems: 'center',
     marginBottom: Spacing.lg,
     ...Shadows.md,
   },
 
   avatarContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     backgroundColor: Colors.primary[100],
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: Spacing.md,
   },
 
   userName: {
-    fontSize: Typography.sizes.xl,
+    fontSize: Typography.sizes.xxl,
     fontWeight: Typography.weights.bold,
     color: Colors.text.primary,
     marginBottom: 4,
   },
 
-  userBio: {
-    fontSize: Typography.sizes.md,
-    color: Colors.text.secondary,
-    textAlign: 'center' as const,
-    marginBottom: 4,
-  },
-
-  joinDate: {
+  userEmail: {
     fontSize: Typography.sizes.sm,
-    color: Colors.text.tertiary,
+    color: Colors.text.secondary,
     marginBottom: Spacing.md,
   },
 
-  editButton: {
-    backgroundColor: Colors.primary[500],
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
+  joinDateBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    backgroundColor: Colors.neutral[100],
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
     borderRadius: BorderRadius.full,
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 6,
   },
 
-  editButtonText: {
-    color: Colors.text.inverse,
-    fontSize: Typography.sizes.sm,
-    fontWeight: Typography.weights.semibold,
+  joinDateText: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.text.secondary,
   },
 
   // Sections
   section: {
-    marginBottom: Spacing.xl,
+    marginTop: Spacing.lg,
+    paddingHorizontal: Spacing.md,
+  },
+
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+
+  sectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
   },
 
   sectionTitle: {
     fontSize: Typography.sizes.lg,
-    fontWeight: Typography.weights.semibold,
+    fontWeight: Typography.weights.bold,
     color: Colors.text.primary,
+  },
+
+  sectionLink: {
+    fontSize: Typography.sizes.sm,
+    fontWeight: Typography.weights.semibold,
+    color: Colors.primary[600],
+  },
+
+  // Stats Grid
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
     marginBottom: Spacing.md,
   },
 
-  subsectionTitle: {
-    fontSize: Typography.sizes.md,
-    fontWeight: Typography.weights.medium,
-    color: Colors.text.primary,
-    marginBottom: Spacing.sm,
-  },
-
-  // Stats
-  statsGrid: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    gap: Spacing.sm,
-    marginBottom: Spacing.lg,
-  },
-
   statCard: {
-    backgroundColor: Colors.background.primary,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    alignItems: 'center' as const,
     flex: 1,
-    minWidth: 45,
+    minWidth: '48%',
+    backgroundColor: Colors.background.primary,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
     ...Shadows.sm,
   },
 
+  statIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.sm,
+  },
+
   statValue: {
-    fontSize: Typography.sizes.xl,
+    fontSize: Typography.sizes.xxl,
     fontWeight: Typography.weights.bold,
-    marginTop: Spacing.xs,
-    marginBottom: 4,
+    marginBottom: 2,
   },
 
   statLabel: {
     fontSize: Typography.sizes.sm,
     color: Colors.text.secondary,
-    textAlign: 'center' as const,
+    fontWeight: Typography.weights.medium,
   },
 
-  // Categories
-  categoriesContainer: {
+  // Categories Card
+  categoriesCard: {
     backgroundColor: Colors.background.primary,
-    borderRadius: BorderRadius.md,
+    borderRadius: BorderRadius.lg,
     padding: Spacing.md,
     ...Shadows.sm,
   },
 
-  categoryItem: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-    paddingVertical: Spacing.xs,
+  categoriesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    marginBottom: Spacing.md,
+    paddingBottom: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.light,
+  },
+
+  categoriesTitle: {
+    fontSize: Typography.sizes.md,
+    fontWeight: Typography.weights.semibold,
+    color: Colors.text.primary,
+  },
+
+  categoryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: Spacing.sm,
+  },
+
+  categoryInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+
+  categoryRank: {
+    fontSize: Typography.sizes.md,
+    fontWeight: Typography.weights.bold,
+    color: Colors.primary[500],
+    width: 28,
   },
 
   categoryName: {
-    fontSize: Typography.sizes.sm,
+    fontSize: Typography.sizes.md,
     color: Colors.text.primary,
     fontWeight: Typography.weights.medium,
+  },
+
+  categoryMetrics: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
   },
 
   categoryCount: {
     fontSize: Typography.sizes.sm,
     color: Colors.text.secondary,
-  },
-
-  // Quick Actions
-  quickActions: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    gap: Spacing.md,
-  },
-
-  quickActionButton: {
-    alignItems: 'center' as const,
-    flex: 1,
-    minWidth: 80,
-  },
-
-  quickActionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.md,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    marginBottom: Spacing.xs,
-  },
-
-  quickActionLabel: {
-    fontSize: Typography.sizes.xs,
-    color: Colors.text.secondary,
-    textAlign: 'center' as const,
     fontWeight: Typography.weights.medium,
   },
 
-  // Settings
-  settingsItem: {
+  categoryPercentage: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.text.tertiary,
+  },
+
+  // Insights
+  insightCards: {
+    gap: Spacing.sm,
+  },
+
+  insightCard: {
+    flexDirection: 'row',
     backgroundColor: Colors.background.primary,
-    borderRadius: BorderRadius.md,
+    borderRadius: BorderRadius.lg,
     padding: Spacing.md,
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    marginBottom: Spacing.sm,
+    gap: Spacing.md,
     ...Shadows.sm,
   },
 
-  settingsIcon: {
+  insightIcon: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.primary[100],
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    marginRight: Spacing.md,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.success + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
-  settingsContent: {
+  insightContent: {
     flex: 1,
   },
 
-  settingsTitle: {
+  insightTitle: {
+    fontSize: Typography.sizes.md,
+    fontWeight: Typography.weights.semibold,
+    color: Colors.text.primary,
+    marginBottom: 4,
+  },
+
+  insightText: {
+    fontSize: Typography.sizes.sm,
+    color: Colors.text.secondary,
+    lineHeight: Typography.lineHeights.relaxed * Typography.sizes.sm,
+  },
+
+  insightHighlight: {
+    fontWeight: Typography.weights.semibold,
+    color: Colors.text.primary,
+  },
+
+  // Action Cards
+  actionCards: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+
+  actionCard: {
+    flex: 1,
+    minWidth: '48%',
+    backgroundColor: Colors.background.primary,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    alignItems: 'center',
+    ...Shadows.sm,
+  },
+
+  actionCardIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: BorderRadius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.sm,
+  },
+
+  actionCardTitle: {
+    fontSize: Typography.sizes.md,
+    fontWeight: Typography.weights.semibold,
+    color: Colors.text.primary,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+
+  actionCardDescription: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.text.secondary,
+    textAlign: 'center',
+  },
+
+  // Settings
+  settingsGroup: {
+    gap: Spacing.xs,
+  },
+
+  settingsItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.background.primary,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    ...Shadows.sm,
+  },
+
+  settingsItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: Spacing.md,
+  },
+
+  settingsIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primary[50],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  settingsItemContent: {
+    flex: 1,
+  },
+
+  settingsItemTitle: {
     fontSize: Typography.sizes.md,
     fontWeight: Typography.weights.semibold,
     color: Colors.text.primary,
     marginBottom: 2,
   },
 
-  settingsSubtitle: {
+  settingsItemSubtitle: {
     fontSize: Typography.sizes.sm,
     color: Colors.text.secondary,
   },
 
   // App Info
   appInfo: {
-    alignItems: 'center' as const,
-    paddingVertical: Spacing.lg,
+    alignItems: 'center',
+    paddingVertical: Spacing.xxl,
     marginTop: Spacing.lg,
+  },
+
+  appInfoButton: {
+    alignItems: 'center',
+  },
+
+  appName: {
+    fontSize: Typography.sizes.xl,
+    fontWeight: Typography.weights.bold,
+    color: Colors.text.primary,
+    marginBottom: 4,
   },
 
   appVersion: {
     fontSize: Typography.sizes.sm,
-    fontWeight: Typography.weights.medium,
     color: Colors.text.secondary,
-    marginBottom: 4,
+    marginBottom: Spacing.xs,
   },
 
-  appDescription: {
-    fontSize: Typography.sizes.xs,
-    color: Colors.text.tertiary,
-    marginBottom: Spacing.sm,
-  },
-
-  copyright: {
-    fontSize: Typography.sizes.xs,
+  appTagline: {
+    fontSize: Typography.sizes.sm,
     color: Colors.text.tertiary,
   },
 
-  // Modal styles
+  // Modals
   modal: {
-    justifyContent: 'flex-end' as const,
+    justifyContent: 'flex-end',
     margin: 0,
   },
 
   modalContent: {
     backgroundColor: Colors.background.primary,
-    borderTopLeftRadius: BorderRadius.xl,
-    borderTopRightRadius: BorderRadius.xl,
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
+    maxHeight: '85%',
+  },
+
+  smallModalContent: {
+    backgroundColor: Colors.background.primary,
+    borderTopLeftRadius: BorderRadius.xxl,
+    borderTopRightRadius: BorderRadius.xxl,
   },
 
   modalHeader: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     padding: Spacing.lg,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border.light,
   },
 
+  modalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+
   modalTitle: {
-    fontSize: Typography.sizes.lg,
-    fontWeight: Typography.weights.semibold,
+    fontSize: Typography.sizes.xl,
+    fontWeight: Typography.weights.bold,
     color: Colors.text.primary,
   },
 
   modalBody: {
     padding: Spacing.lg,
-    maxHeight: 400,
-  },
-
-  modalSubtitle: {
-    fontSize: Typography.sizes.md,
-    color: Colors.text.secondary,
-    marginBottom: Spacing.lg,
-    lineHeight: Typography.lineHeights.relaxed * Typography.sizes.md,
   },
 
   modalFooter: {
-    flexDirection: 'row' as const,
-    gap: Spacing.md,
+    flexDirection: 'row',
+    gap: Spacing.sm,
     padding: Spacing.lg,
     borderTopWidth: 1,
     borderTopColor: Colors.border.light,
   },
 
-  cancelButton: {
+  modalCancelButton: {
     flex: 1,
     paddingVertical: Spacing.md,
     backgroundColor: Colors.neutral[100],
     borderRadius: BorderRadius.md,
-    alignItems: 'center' as const,
+    alignItems: 'center',
   },
 
-  cancelButtonText: {
+  modalCancelButtonText: {
     fontSize: Typography.sizes.md,
     fontWeight: Typography.weights.semibold,
     color: Colors.text.secondary,
   },
 
-  saveButton: {
+  modalSaveButton: {
     flex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
     paddingVertical: Spacing.md,
     backgroundColor: Colors.primary[500],
     borderRadius: BorderRadius.md,
-    alignItems: 'center' as const,
   },
 
-  saveButtonText: {
+  modalSaveButtonText: {
     fontSize: Typography.sizes.md,
-    fontWeight: Typography.weights.semibold,
+    fontWeight: Typography.weights.bold,
     color: Colors.text.inverse,
   },
 
-  // Preference sections
+  // Preference Sections
   preferenceSection: {
     marginBottom: Spacing.xl,
   },
 
   preferenceSectionTitle: {
-    fontSize: Typography.sizes.md,
+    fontSize: Typography.sizes.lg,
     fontWeight: Typography.weights.semibold,
     color: Colors.text.primary,
+    marginBottom: 4,
+  },
+
+  preferenceSectionSubtitle: {
+    fontSize: Typography.sizes.sm,
+    color: Colors.text.secondary,
     marginBottom: Spacing.md,
   },
 
-  // Color options
+  // Color Options
   colorGrid: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    gap: Spacing.sm,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
   },
 
   colorOption: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     backgroundColor: Colors.neutral[50],
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1.5,
     borderColor: Colors.border.light,
-    gap: Spacing.xs,
   },
 
   colorOptionSelected: {
@@ -1216,17 +1393,18 @@ const styles = {
   colorOptionText: {
     fontSize: Typography.sizes.sm,
     color: Colors.text.secondary,
-  },
-
-  colorOptionTextSelected: {
-    color: Colors.primary[500],
     fontWeight: Typography.weights.medium,
   },
 
-  // Style options
+  colorOptionTextSelected: {
+    color: Colors.primary[700],
+    fontWeight: Typography.weights.semibold,
+  },
+
+  // Style Options
   styleOptions: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: Spacing.sm,
   },
 
@@ -1235,7 +1413,7 @@ const styles = {
     paddingVertical: Spacing.md,
     backgroundColor: Colors.neutral[50],
     borderRadius: BorderRadius.full,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: Colors.border.light,
   },
 
@@ -1247,14 +1425,15 @@ const styles = {
   styleOptionText: {
     fontSize: Typography.sizes.sm,
     color: Colors.text.secondary,
-  },
-
-  styleOptionTextSelected: {
-    color: Colors.primary[500],
     fontWeight: Typography.weights.medium,
   },
 
-  // Body type options
+  styleOptionTextSelected: {
+    color: Colors.primary[700],
+    fontWeight: Typography.weights.semibold,
+  },
+
+  // Body Type Options
   bodyTypeOptions: {
     gap: Spacing.sm,
   },
@@ -1264,7 +1443,7 @@ const styles = {
     paddingVertical: Spacing.md,
     backgroundColor: Colors.neutral[50],
     borderRadius: BorderRadius.md,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: Colors.border.light,
   },
 
@@ -1276,61 +1455,54 @@ const styles = {
   bodyTypeOptionText: {
     fontSize: Typography.sizes.sm,
     color: Colors.text.secondary,
-    textAlign: 'center' as const,
-  },
-
-  bodyTypeOptionTextSelected: {
-    color: Colors.primary[500],
+    textAlign: 'center',
     fontWeight: Typography.weights.medium,
   },
 
-  // Notification settings
-  notificationOption: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-    paddingVertical: Spacing.md,
+  bodyTypeOptionTextSelected: {
+    color: Colors.primary[700],
+    fontWeight: Typography.weights.semibold,
   },
 
-  notificationTitle: {
-    fontSize: Typography.sizes.md,
-    fontWeight: Typography.weights.semibold,
-    color: Colors.text.primary,
+  // About Modal
+  aboutSection: {
+    alignItems: 'center',
+    paddingVertical: Spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.light,
+    marginBottom: Spacing.lg,
+  },
+
+  aboutAppName: {
+    fontSize: Typography.sizes.xxl,
+    fontWeight: Typography.weights.bold,
+    color: Colors.primary[600],
     marginBottom: 4,
   },
 
-  notificationSubtitle: {
-    fontSize: Typography.sizes.sm,
-    color: Colors.text.secondary,
-  },
-
-  // Display settings
-  displayOption: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-    paddingVertical: Spacing.md,
-  },
-
-  displayOptionContent: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: Spacing.md,
-  },
-
-  displayOptionText: {
-    flex: 1,
-  },
-
-  displayTitle: {
+  aboutVersion: {
     fontSize: Typography.sizes.md,
-    fontWeight: Typography.weights.semibold,
-    color: Colors.text.primary,
-    marginBottom: 4,
+    color: Colors.text.secondary,
+    marginBottom: Spacing.xs,
   },
 
-  displaySubtitle: {
+  aboutTagline: {
     fontSize: Typography.sizes.sm,
-    color: Colors.text.secondary,
+    color: Colors.text.tertiary,
   },
-};
+
+  aboutDescription: {
+    fontSize: Typography.sizes.md,
+    color: Colors.text.secondary,
+    lineHeight: Typography.lineHeights.relaxed * Typography.sizes.md,
+    textAlign: 'center',
+    marginBottom: Spacing.lg,
+  },
+
+  aboutCopyright: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.text.tertiary,
+    textAlign: 'center',
+    lineHeight: Typography.lineHeights.relaxed * Typography.sizes.xs,
+  },
+});

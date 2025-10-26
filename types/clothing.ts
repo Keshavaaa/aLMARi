@@ -25,9 +25,9 @@ export interface ClothingItem {
   isFavorite: boolean;
 }
 
-export type Season = 'Spring' | 'Summer' | 'Fall' | 'Winter';
+export type Season = 'spring' | 'summer' | 'fall' | 'winter' | 'all-season';
 
-export type FormalityLevel = 'casual' | 'smart-casual' | 'semi-formal' | 'formal';
+export type FormalityLevel = 'casual' | 'business-casual' | 'formal' | 'athletic';
 
 export interface OutfitRecommendation {
   id: string;
@@ -189,7 +189,10 @@ export const CLOTHING_CATEGORIES = [
   'Undergarments',
   'Activewear',
   'Formal',
-  'Sleepwear'
+  'Sleepwear',
+  'Ethnic Wear',
+  'Traditional',
+  'Indo-Western',
 ] as const;
 
 export const CLOTHING_SUBCATEGORIES: Record<string, string[]> = {
@@ -202,7 +205,11 @@ export const CLOTHING_SUBCATEGORIES: Record<string, string[]> = {
   Undergarments: ['Bra', 'Underwear', 'Shapewear', 'Socks', 'Tights'],
   Activewear: ['Workout Top', 'Yoga Pants', 'Sports Bra', 'Athletic Shorts', 'Tracksuit'],
   Formal: ['Suit', 'Tuxedo', 'Formal Shirt', 'Bow Tie', 'Cufflinks'],
-  Sleepwear: ['Pajamas', 'Nightgown', 'Robe', 'Sleep Shirt']
+  Sleepwear: ['Pajamas', 'Nightgown', 'Robe', 'Sleep Shirt'],
+  'Ethnic-Wear': [ 'Kurta',  'Kurta Pajama',  'Sherwani',  'Dhoti', 'Salwar Kameez',
+    'Salwar Suit', 'Churidar', 'Anarkali','Lehenga', 'Saree', 'Dupatta', 'Nehru Jacket', ],
+  'Traditional': [ 'Saree', 'Lehenga Choli', 'Ghagra', 'Mundu', 'Lungi',],
+  'Indo-Western': ['Kurti','Palazzo','Dhoti Pants','Shrug','Cape','Jumpsuit',],
 };
 
 export const COMMON_COLORS = [

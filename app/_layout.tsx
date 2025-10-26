@@ -5,36 +5,28 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import SplashScreen from '@/components/SplashScreen';
-
-// Import your database service
 import DatabaseService from '../services/DatabaseService';
+import * as Font from 'expo-font'; // ✅ ADD THIS
 
 export default function RootLayout() {
+  const [isReady, setIsReady] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
-  const [appInitialized, setAppInitialized] = useState(false);
 
   useFrameworkReady();
 
   useEffect(() => {
-    // Initialize app first, then handle splash screen
     initializeApp();
   }, []);
 
-  useEffect(() => {
-    if (appInitialized) {
-      // Show splash for 4 seconds after app is initialized
-      const timer = setTimeout(() => {
-        setShowSplash(false);
-      }, 4000);
-
-      return () => clearTimeout(timer);
-    }
-  }, [appInitialized]);
-
-  // Add this initialization function
   const initializeApp = async () => {
     try {
       console.log('🚀 Initializing aLMARi App...');
+
+      // ✅ LOAD CENTAUR FONT FIRST
+      await Font.loadAsync({
+        Centaur: require('../assets/fonts/centaur-regular.ttf'),
+      });
+      console.log('✅ Centaur font loaded');
 
       // Get or create device ID
       let deviceId = await AsyncStorage.getItem('device_id');
@@ -51,23 +43,36 @@ export default function RootLayout() {
         console.log('📱 Existing device ID found:', deviceId);
       }
 
-      // Store device ID globally for use in other components
-      global.deviceId = deviceId;
+      globalThis.deviceId = deviceId;
 
-      // Database will be initialized automatically by DatabaseService constructor
-      // Wait a moment to ensure database is ready
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Initialize database
+      console.log('🗄️ Initializing database...');
+      await DatabaseService.initialize();
+      console.log('✅ Database initialized successfully');
 
       console.log('✅ aLMARi App initialization complete');
-      setAppInitialized(true);
+
+      // Small delay for stability
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Mark app as ready
+      setIsReady(true);
+
+      // Wait 4 seconds THEN hide splash
+      setTimeout(() => {
+        setShowSplash(false);
+      }, 4000);
     } catch (error) {
       console.error('❌ App initialization error:', error);
-      // Still allow app to continue even if initialization fails
-      setAppInitialized(true);
+      setIsReady(true);
+      setTimeout(() => {
+        setShowSplash(false);
+      }, 2000);
     }
   };
 
-  if (showSplash) {
+  // Show splash screen while not ready OR while showSplash is true
+  if (!isReady || showSplash) {
     return <SplashScreen />;
   }
 

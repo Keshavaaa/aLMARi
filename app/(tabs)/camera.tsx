@@ -9,6 +9,8 @@ import Animated, {
   Easing,
   cancelAnimation,
 } from 'react-native-reanimated';
+import 'react-native-get-random-values';
+import DatabaseService from '@/services/DatabaseService';
 import {
   Platform,
   View,
@@ -18,7 +20,7 @@ import {
   Dimensions,
   StatusBar,
   BackHandler,
-  StyleSheet
+  StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Camera, CameraView, CameraType, FlashMode } from 'expo-camera';
@@ -26,7 +28,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { AIService } from '../../services/AIService';
-import { PrivacyStorage } from '../../services/PrivacyStorage';
+import { compressImage } from '@/services/WardrobeStorage';
 
 // Icons
 import {
@@ -38,7 +40,6 @@ import {
   Sparkles,
   Brain,
   Eye,
-  Shirt,
   Palette,
   Tag,
   CheckCircle,
@@ -46,7 +47,6 @@ import {
 } from 'lucide-react-native';
 
 // Services and Types
-import { processClothingImage } from '../../services/ImageProcessingService';
 import {
   ProcessedClothingItem,
   UploadedImage,
@@ -68,38 +68,39 @@ const { width, height } = Dimensions.get('window');
 
 // Processing stages for better UX
 const PROCESSING_STAGES = [
-  { id: 'upload', text: '📤 Preparing image...', icon: Eye, duration: 800 },
+  { id: 'upload', text: 'Preparing image...', icon: Eye, duration: 800 },
   {
     id: 'background',
-    text: '✂️ Removing background...',
+    text: 'Removing background...',
     icon: Sparkles,
     duration: 1200,
   },
-  {
-    id: 'analyze',
-    text: '🤖 AI analyzing clothing...',
-    icon: Brain,
-    duration: 1000,
-  },
+  { id: 'analyze', text: 'Analyzing clothing...', icon: Brain, duration: 1000 },
   {
     id: 'colors',
-    text: '🎨 Detecting colors & patterns...',
+    text: 'Detecting colors & patterns...',
     icon: Palette,
     duration: 900,
   },
-  {
-    id: 'category',
-    text: '🏷️ Identifying category & style...',
-    icon: Tag,
-    duration: 700,
-  },
+  { id: 'category', text: 'Identifying category...', icon: Tag, duration: 700 },
   {
     id: 'finalize',
-    text: '✨ Creating your item...',
+    text: 'Creating your item...',
     icon: CheckCircle,
     duration: 600,
   },
 ];
+/**
+ * Minimal status item component
+ */
+const StatusItem = ({ text, active }: { text: string; active: boolean }) => (
+  <View style={styles.statusItem}>
+    <View style={[styles.statusDot, active && styles.statusDotActive]} />
+    <Text style={[styles.statusText, active && styles.statusTextActive]}>
+      {text}
+    </Text>
+  </View>
+);
 
 export default function CameraScreen() {
   // Camera permissions and settings
@@ -122,6 +123,8 @@ export default function CameraScreen() {
   const brainScale = useSharedValue(0.8);
   const progressWidth = useSharedValue(0);
   const captureButtonScale = useSharedValue(1);
+  const lastSavedImageUri = useRef<string | null>(null);
+  const isSavingToDatabase = useRef(false);
 
   // Handle Android back button
   useFocusEffect(
@@ -274,7 +277,7 @@ export default function CameraScreen() {
    */
   const getCameraPermission = async () => {
     try {
-      const { status } = await Camera.requestCameraPermissionAsync();
+      const { status } = await Camera.requestCameraPermissionsAsync();
       setHasPermission(status === 'granted');
     } catch (error) {
       console.error('Error requesting camera permissions:', error);
@@ -293,55 +296,181 @@ export default function CameraScreen() {
     setProcessingError(null);
 
     try {
-      // Stage 1: Image Processing & Background Removal
-      const processedImage = await processClothingImage(imageUri);
+      // Stage 1: Send to backend for processing (bg removal + color detection)
+      console.log(
+        '🚀 Sending to backend:',
+        process.env.EXPO_PUBLIC_BACKEND_URL,
+      );
 
-      // TODO: Implement Gemini API analysis
-      // For now, we'll simulate AI analysis and provide manual fallback
+      const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL;
 
-      // Stage 2: AI Analysis with real Gemini API
-      let aiResult: Partial<ClothingItem> | null = null;
-
-      if (base64) {
-        try {
-          // Real Gemini API analysis
-          const analysis = await AIService.analyzeClothing(imageUri);
-          aiResult = {
-            name: `${analysis.color} ${analysis.category}`,
-            category: analysis.category,
-            subcategory: analysis.subcategory,
-            color: analysis.color,
-            material: analysis.material,
-            description: `${analysis.color} ${analysis.material} ${analysis.category}`,
-            seasonality: analysis.seasonality,
-            formality: analysis.formality,
-          };
-        } catch (error) {
-          console.error('Gemini API failed, using fallback:', error);
-          // Keep your existing fallback
-          aiResult = {
-            name: 'Detected Item',
-            category:
-              CLOTHING_CATEGORIES[
-                Math.floor(Math.random() * CLOTHING_CATEGORIES.length)
-              ],
-            color: processedImage.data?.dominantColors?.[0] || 'Unknown',
-            description: 'AI-detected clothing item',
-          };
-        }
+      if (!backendUrl) {
+        console.error('❌ EXPO_PUBLIC_BACKEND_URL not set in .env');
+        throw new Error('Backend URL not configured');
       }
 
-      // Extract the actual processed image data
-      const processedData = processedImage.data;
+      // Create FormData for backend
+      const formData = new FormData();
+      formData.append('file', {
+        uri: imageUri,
+        type: 'image/jpeg',
+        name: 'clothing.jpg',
+      } as any);
 
-      // Navigate to item details with processed data
+      // Call backend /api/process-clothing endpoint
+      const backendResponse = await fetch(
+        `${backendUrl}/api/process-clothing`,
+        {
+          method: 'POST',
+          body: formData,
+          headers: {
+            Accept: 'application/json',
+          },
+        },
+      );
+
+      const backendResult = await backendResponse.json();
+
+      if (!backendResult.success) {
+        console.error('❌ Backend processing failed:', backendResult.error);
+        throw new Error(backendResult.error || 'Backend processing failed');
+      }
+
+      console.log('✅ Backend processing complete:', backendResult.data);
+
+      const { processed_image, dominant_colors } = backendResult.data;
+
+      // Stage 2: AI Analysis with Gemini
+      let aiResult: Partial<ClothingItem> | null = null;
+
+      try {
+        console.log('🤖 Running Gemini AI analysis...');
+        const analysis = await AIService.analyzeClothing(imageUri);
+
+        aiResult = {
+          name: `${analysis.color} ${analysis.category}`,
+          category: analysis.category,
+          subcategory: analysis.subcategory,
+          color: analysis.color,
+          material: analysis.material,
+          description: `${analysis.color} ${analysis.material} ${analysis.category}`,
+          seasonality: analysis.seasonality,
+          formality: analysis.formality,
+        };
+
+        console.log('✅ Gemini analysis complete:', aiResult);
+      } catch (error) {
+        console.error('⚠️ Gemini API failed, using backend colors:', error);
+
+        // Fallback using backend color detection
+        const colorName = dominant_colors[0]?.name || 'Unknown';
+
+        aiResult = {
+          name: `${colorName} Item`,
+          category:
+            CLOTHING_CATEGORIES[
+              Math.floor(Math.random() * CLOTHING_CATEGORIES.length)
+            ],
+          color: colorName,
+          description: `${colorName} clothing item`,
+        };
+      }
+
+      // ✅ Stage 3: Save processed image to filesystem BEFORE navigation
+      console.log('💾 Saving processed image to filesystem...');
+
+      let finalImageUri = imageUri; // Fallback to original
+
+      try {
+        if (processed_image) {
+          const { localUri } = await compressImage(processed_image, {
+            saveLocally: true,
+            maxWidth: 800,
+            quality: 0.8,
+            format: 'jpeg',
+          });
+
+          if (localUri) {
+            finalImageUri = localUri;
+            console.log('✅ Background-removed image saved to:', finalImageUri);
+          } else {
+            console.warn(
+              '⚠️ compressImage returned no localUri, using original',
+            );
+          }
+        }
+      } catch (saveError) {
+        console.error('⚠️ Failed to save processed image:', saveError);
+        finalImageUri = imageUri; // Fallback to original
+      }
+
+      // ✅ Stage 4 - Save to SQLite database (direct method)
+      console.log('💾 Saving item to local SQLite database...');
+
+      try {
+        const SQLite = require('expo-sqlite');
+        const db = await DatabaseService.getDatabase();
+
+        // Get or create user
+        const deviceId = globalThis.deviceId || `android_${Date.now()}_temp`;
+
+        let user = (await db.getFirstAsync(
+          'SELECT * FROM users WHERE device_id = ?',
+          [deviceId],
+        )) as any;
+
+        if (!user) {
+          console.log('🆕 Creating new user for device:', deviceId);
+          const result = await db.runAsync(
+            'INSERT INTO users (username, device_id) VALUES (?, ?)',
+            [`User_${Date.now()}`, deviceId],
+          );
+          user = { id: result.lastInsertRowId };
+          console.log('✅ Created user with ID:', user.id);
+        }
+
+        // Prepare AI analysis data
+        const aiAnalysisData = {
+          description: aiResult?.description || 'Clothing item',
+          formality: aiResult?.formality || 'casual',
+          notes: '',
+        };
+
+        // Insert clothing item
+        const itemResult = await db.runAsync(
+          `
+    INSERT INTO clothing_items (
+      user_id, name, image_uri, clothing_type, primary_color,
+      season_suitability, ai_analysis
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `,
+          [
+            user.id,
+            aiResult?.name || 'New Item',
+            finalImageUri,
+            aiResult?.category || 'Other',
+            aiResult?.color || 'Unknown',
+            aiResult?.seasonality?.[0] || 'summer',
+            JSON.stringify(aiAnalysisData),
+          ],
+        );
+
+        console.log(
+          '✅ Item saved to SQLite with ID:',
+          itemResult.lastInsertRowId,
+        );
+      } catch (dbError) {
+        console.error('❌ Database save error:', dbError);
+        // Continue anyway - user can still see item in item-details
+      }
+
+      // ✅ Navigation params with FILE URI (not base64!)
       const navigationParams = {
-        imageUri: processedData?.uri || imageUri,
-        originalImageUri: processedData?.originalUri || imageUri,
-        dominantColors: JSON.stringify(processedData?.dominantColors || []),
+        imageUri: finalImageUri,
+        originalImageUri: imageUri,
+        dominantColors: dominant_colors.map((c: any) => c.hex).join(','),
         isNewItem: 'true',
         source: 'camera',
-        // Add AI suggestions if available
         ...(aiResult && {
           suggestedName: aiResult.name,
           suggestedCategory: aiResult.category,
@@ -350,44 +479,39 @@ export default function CameraScreen() {
         }),
       };
 
+      // Reset states
       setAiProcessing(false);
+      setIsCapturing(false);
+      setProcessingError(null);
 
+      // Navigate immediately
+      console.log('✅ AI Processing complete, navigating to item-details');
       if (aiResult) {
-        // Show AI success message
-        Alert.alert(
-          '✨ AI Analysis Complete!',
-          `Detected: ${aiResult.name}\nCategory: ${aiResult.category}\nColor: ${aiResult.color}`,
-          [
-            {
-              text: 'Review & Save',
-              onPress: () => {
-                router.push({
-                  pathname: '/item-details',
-                  params: navigationParams,
-                });
-              },
-            },
-            {
-              text: 'Take Another',
-              style: 'cancel',
-            },
-          ],
+        console.log(
+          '🚀 Detected:',
+          aiResult.name,
+          '|',
+          aiResult.category,
+          '|',
+          aiResult.color,
         );
-      } else {
-        // Proceed with manual entry
-        router.push({
-          pathname: '/item-details',
-          params: navigationParams,
-        });
       }
+
+      router.push({
+        pathname: '/item-details',
+        params: navigationParams,
+      });
     } catch (error) {
-      console.error('AI processing failed:', error);
-      setProcessingError('Processing failed. Please try again.');
+      console.error('❌ Processing failed:', error);
+
+      // Reset states on error
       setAiProcessing(false);
+      setIsCapturing(false);
+      setProcessingError('Processing failed. Please try again.');
 
       Alert.alert(
         'Processing Error',
-        'Failed to process the image. You can still add the item manually.',
+        `Failed to process: ${error instanceof Error ? error.message : 'Unknown error'}`,
         [
           {
             text: 'Add Manually',
@@ -402,7 +526,10 @@ export default function CameraScreen() {
               });
             },
           },
-          { text: 'Try Again', style: 'cancel' },
+          {
+            text: 'Try Again',
+            style: 'cancel',
+          },
         ],
       );
     }
@@ -480,7 +607,6 @@ export default function CameraScreen() {
         await processWithAI(asset.uri, base64Data);
         setIsCapturing(false);
       }
-
     } catch (error) {
       console.error('Gallery selection failed:', error);
       Alert.alert(
@@ -570,60 +696,48 @@ export default function CameraScreen() {
         ref={cameraRef}
       />
 
-      {/* AI Processing Overlay */}
+      {/* AI Processing Overlay - PROFESSIONAL VERSION */}
       {aiProcessing && (
         <View style={styles.processingOverlay}>
-          {/* Central AI Brain Animation */}
-          <Animated.View style={[brainStyle, styles.brainContainer]}>
-            <View style={styles.brainCircle}>
-              <Brain size={50} color={Colors.text.inverse} strokeWidth={2} />
-            </View>
-          </Animated.View>
+          <View style={styles.processingCard}>
+            {/* Minimal animated spinner */}
+            <Animated.View style={[pulseStyle, styles.spinnerContainer]}>
+              <View style={styles.spinner}>
+                <Animated.View style={[sparkleStyle, styles.spinnerRing]} />
+              </View>
+            </Animated.View>
 
-          {/* Floating Sparkles */}
-          <Animated.View style={[sparkleStyle, styles.sparkle1]}>
-            <Sparkles size={24} color={Colors.warning} />
-          </Animated.View>
-          <Animated.View style={[sparkleStyle, styles.sparkle2]}>
-            <Sparkles size={16} color={Colors.primary[400]} />
-          </Animated.View>
-          <Animated.View style={[sparkleStyle, styles.sparkle3]}>
-            <Sparkles size={20} color={Colors.primary[300]} />
-          </Animated.View>
-
-          {/* Processing Info */}
-          <View style={styles.processingInfo}>
-            <Text style={styles.processingTitle}>AI Fashion Assistant</Text>
-            <Text style={styles.processingStage}>
-              {processingError || processingText}
+            {/* Clean typography */}
+            <Text style={styles.processingTitle}>Processing Image</Text>
+            <Text style={styles.processingSubtitle}>
+              {processingError ||
+                processingText.replace(/📤|✂️|🤖|🎨|🏷️|✨/g, '').trim()}
             </Text>
 
-            {/* Progress Bar */}
+            {/* Minimal progress bar */}
             <View style={styles.progressContainer}>
               <Animated.View style={[progressStyle, styles.progressBar]} />
             </View>
 
-            {/* Feature List */}
+            {/* Simple status list */}
             {!processingError && (
-              <View style={styles.featureList}>
-                <FeatureItem
-                  icon={Eye}
-                  text="Detecting clothing type & style"
-                  active={currentStage >= 2}
+              <View style={styles.statusList}>
+                <StatusItem
+                  text="Analyzing composition"
+                  active={currentStage >= 1}
                 />
-                <FeatureItem
-                  icon={Palette}
-                  text="Analyzing colors & patterns"
+                <StatusItem
+                  text="Detecting colors & patterns"
                   active={currentStage >= 3}
                 />
-                <FeatureItem
-                  icon={Tag}
-                  text="Creating smart categories"
+                <StatusItem
+                  text="Categorizing item"
                   active={currentStage >= 4}
                 />
               </View>
             )}
 
+            {/* Error state */}
             {processingError && (
               <View style={styles.errorContainer}>
                 <AlertCircle size={20} color={Colors.error} />
@@ -640,7 +754,7 @@ export default function CameraScreen() {
         <SafeAreaView>
           <View style={styles.topBar}>
             <TouchableOpacity
-              onPress={() => router.back()}
+              onPress={() => router.push('/(tabs)')}
               style={styles.topButton}
             >
               <X
@@ -758,7 +872,7 @@ export default function CameraScreen() {
           <View style={styles.instructions}>
             <Text style={styles.instructionText}>
               {aiProcessing
-                ? '🤖 AI is analyzing your clothing item...'
+                ? 'AI is analyzing your clothing item...'
                 : 'Tap to capture with AI • Gallery for existing photos'}
             </Text>
             {!aiProcessing && (
@@ -773,31 +887,6 @@ export default function CameraScreen() {
   );
 }
 
-/**
- * Feature Item Component for processing list
- */
-const FeatureItem = ({
-  icon: Icon,
-  text,
-  active,
-}: {
-  icon: any;
-  text: string;
-  active: boolean;
-}) => (
-  <View style={styles.featureItem}>
-    <Icon
-      size={16}
-      color={active ? Colors.primary[300] : Colors.neutral[400]}
-      strokeWidth={2}
-    />
-    <Text style={[styles.featureText, active && styles.featureTextActive]}>
-      {text}
-    </Text>
-    {active && <CheckCircle size={12} color={Colors.success} />}
-  </View>
-);
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -806,7 +895,6 @@ const styles = StyleSheet.create({
   camera: {
     flex: 1,
   },
-
 
   // Web styles
   webContainer: {
@@ -907,107 +995,113 @@ const styles = StyleSheet.create({
     color: Colors.text.secondary,
   },
 
-  // Processing overlay
+  // Processing overlay - PROFESSIONAL DESIGN
   processingOverlay: {
     position: 'absolute' as const,
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: Spacing.xl,
+  },
+
+  processingCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xxl,
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center' as const,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+
+  spinnerContainer: {
+    marginBottom: Spacing.lg,
+  },
+
+  spinner: {
+    width: 60,
+    height: 60,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
   },
 
-  brainContainer: {
-    marginBottom: Spacing.xl,
-  },
-
-  brainCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: Colors.primary[500],
-    justifyContent: 'center' as const,
-    alignItems: 'center' as const,
-    ...Shadows.xl,
-  },
-
-  // Sparkle positions
-  sparkle1: {
-    position: 'absolute' as const,
-    top: '40%',
-    left: '20%',
-  },
-
-  sparkle2: {
-    position: 'absolute' as const,
-    top: '35%',
-    right: '25%',
-  },
-
-  sparkle3: {
-    position: 'absolute' as const,
-    bottom: '40%',
-    left: '30%',
-  },
-
-  // Processing info
-  processingInfo: {
-    alignItems: 'center' as const,
-    width: '80%',
+  spinnerRing: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 3,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderTopColor: Colors.primary[500],
+    borderRightColor: Colors.primary[400],
   },
 
   processingTitle: {
     color: Colors.text.inverse,
     fontSize: Typography.sizes.xl,
-    fontWeight: Typography.weights.bold,
-    textAlign: 'center' as const,
-    marginBottom: Spacing.sm,
+    fontWeight: Typography.weights.semibold,
+    marginBottom: Spacing.xs,
+    letterSpacing: -0.5,
   },
 
-  processingStage: {
-    color: Colors.primary[300],
-    fontSize: Typography.sizes.lg,
+  processingSubtitle: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: Typography.sizes.sm,
     textAlign: 'center' as const,
-    marginBottom: Spacing.xl,
+    marginBottom: Spacing.lg,
+    fontWeight: Typography.weights.normal,
   },
 
   progressContainer: {
     width: '100%',
-    height: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 3,
+    height: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 1,
     overflow: 'hidden' as const,
-    marginBottom: Spacing.xl,
+    marginBottom: Spacing.lg,
   },
 
   progressBar: {
     height: '100%',
     backgroundColor: Colors.primary[500],
-    borderRadius: 3,
-    ...Shadows.md,
   },
 
-  featureList: {
-    alignItems: 'flex-start' as const,
+  statusList: {
+    width: '100%',
+    gap: Spacing.sm,
+    paddingTop: Spacing.sm,
   },
 
-  featureItem: {
+  statusItem: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    marginBottom: Spacing.sm,
     gap: Spacing.sm,
   },
 
-  featureText: {
-    color: Colors.neutral[400],
-    fontSize: Typography.sizes.sm,
-    flex: 1,
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
 
-  featureTextActive: {
-    color: Colors.primary[300],
+  statusDotActive: {
+    backgroundColor: Colors.primary[500],
+  },
+
+  statusText: {
+    fontSize: Typography.sizes.sm,
+    color: 'rgba(255, 255, 255, 0.4)',
+    fontWeight: Typography.weights.normal,
+  },
+
+  statusTextActive: {
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontWeight: Typography.weights.medium,
   },
 
   errorContainer: {
@@ -1019,11 +1113,13 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     borderWidth: 1,
     borderColor: Colors.error,
+    marginTop: Spacing.md,
   },
 
   errorText: {
     color: Colors.error,
     fontSize: Typography.sizes.sm,
+    flex: 1,
   },
 
   // UI Overlay

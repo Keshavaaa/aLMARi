@@ -1,10 +1,19 @@
+// components/SplashScreen.tsx
 import { View, Text, StyleSheet, Animated } from 'react-native';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useFonts } from 'expo-font';
 
-export default function SplashScreen() {
+interface SplashScreenProps {
+  onFinish?: () => void;
+}
+
+export default function SplashScreen({ onFinish }: SplashScreenProps) {
+  const [fontsLoaded] = useFonts({
+    Centaur: require('../assets/fonts/centaur-regular.ttf'),
+  });
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(1)).current;
   const letterAnims = {
     a: useRef(new Animated.Value(0)).current,
     L: useRef(new Animated.Value(0)).current,
@@ -14,95 +23,122 @@ export default function SplashScreen() {
     i: useRef(new Animated.Value(0)).current,
   };
 
+  const aPositionX = useRef(new Animated.Value(0)).current;
+  const iPositionX = useRef(new Animated.Value(0)).current;
+  const finalFadeOut = useRef(new Animated.Value(1)).current;
+
   useEffect(() => {
-    // Initial fade in
+    if (!fontsLoaded) return;
+
+    // Step 1: Initial fade in (0-500ms)
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 500,
       useNativeDriver: true,
     }).start();
 
-    // Letter animation sequence
+    // Step 2: Show all letters with stagger (500-1500ms)
     setTimeout(() => {
-      // First show all letters
       Animated.stagger(100, [
         Animated.timing(letterAnims.a, {
           toValue: 1,
-          duration: 200,
+          duration: 300,
           useNativeDriver: true,
         }),
         Animated.timing(letterAnims.L, {
           toValue: 1,
-          duration: 200,
+          duration: 300,
           useNativeDriver: true,
         }),
         Animated.timing(letterAnims.M, {
           toValue: 1,
-          duration: 200,
+          duration: 300,
           useNativeDriver: true,
         }),
         Animated.timing(letterAnims.A, {
           toValue: 1,
-          duration: 200,
+          duration: 300,
           useNativeDriver: true,
         }),
         Animated.timing(letterAnims.R, {
           toValue: 1,
-          duration: 200,
+          duration: 300,
           useNativeDriver: true,
         }),
         Animated.timing(letterAnims.i, {
           toValue: 1,
-          duration: 200,
+          duration: 300,
           useNativeDriver: true,
         }),
       ]).start();
 
-      // After 2 seconds, collapse middle letters
+      // Step 3: Hold full logo for 1 second, then animate (2500-3500ms)
       setTimeout(() => {
         Animated.parallel([
+          // Fade out LMAR
           Animated.timing(letterAnims.L, {
             toValue: 0,
-            duration: 300,
+            duration: 600,
             useNativeDriver: true,
           }),
           Animated.timing(letterAnims.M, {
             toValue: 0,
-            duration: 300,
+            duration: 600,
             useNativeDriver: true,
           }),
           Animated.timing(letterAnims.A, {
             toValue: 0,
-            duration: 300,
+            duration: 600,
             useNativeDriver: true,
           }),
           Animated.timing(letterAnims.R, {
             toValue: 0,
-            duration: 300,
+            duration: 600,
             useNativeDriver: true,
           }),
-          Animated.timing(scaleAnim, {
-            toValue: 1.2,
-            duration: 300,
+          // Move 'a' to the right
+          Animated.timing(aPositionX, {
+            toValue: 115,
+            duration: 700,
+            useNativeDriver: true,
+          }),
+          // Move 'i' to the left
+          Animated.timing(iPositionX, {
+            toValue: -115,
+            duration: 700,
             useNativeDriver: true,
           }),
         ]).start();
-      }, 2000);
+
+        // Step 4: Hold "ai" for a moment, then fade out everything (3500-4500ms)
+        setTimeout(() => {
+          Animated.timing(finalFadeOut, {
+            toValue: 0,
+            duration: 500,
+            useNativeDriver: true,
+          }).start(() => {
+            // Step 5: Navigate to home (4500ms total)
+            if (onFinish) {
+              onFinish();
+            }
+          });
+        }, 1500); // Hold "ai" for 1.5 seconds
+      }, 2000); // Show full logo for 2 seconds
     }, 500);
-  }, []);
+  }, [fontsLoaded]);
+
+  if (!fontsLoaded) {
+    return null;
+  }
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={['#000000', '#1a1a1a']}
-        style={styles.gradient}
-      >
+      <LinearGradient colors={['#FFFFFF', '#FFFFFF']} style={styles.gradient}>
         <Animated.View
           style={[
             styles.textContainer,
             {
-              opacity: fadeAnim,
-              transform: [{ scale: scaleAnim }],
+              opacity: Animated.multiply(fadeAnim, finalFadeOut),
             },
           ]}
         >
@@ -111,7 +147,10 @@ export default function SplashScreen() {
               style={[
                 styles.letter,
                 styles.purpleLetter,
-                { opacity: letterAnims.a },
+                {
+                  opacity: letterAnims.a,
+                  transform: [{ translateX: aPositionX }],
+                },
               ]}
             >
               a
@@ -119,7 +158,7 @@ export default function SplashScreen() {
             <Animated.Text
               style={[
                 styles.letter,
-                styles.whiteLetter,
+                styles.brownLetter,
                 { opacity: letterAnims.L },
               ]}
             >
@@ -128,7 +167,7 @@ export default function SplashScreen() {
             <Animated.Text
               style={[
                 styles.letter,
-                styles.whiteLetter,
+                styles.brownLetter,
                 { opacity: letterAnims.M },
               ]}
             >
@@ -137,7 +176,7 @@ export default function SplashScreen() {
             <Animated.Text
               style={[
                 styles.letter,
-                styles.whiteLetter,
+                styles.brownLetter,
                 { opacity: letterAnims.A },
               ]}
             >
@@ -146,7 +185,7 @@ export default function SplashScreen() {
             <Animated.Text
               style={[
                 styles.letter,
-                styles.whiteLetter,
+                styles.brownLetter,
                 { opacity: letterAnims.R },
               ]}
             >
@@ -156,7 +195,10 @@ export default function SplashScreen() {
               style={[
                 styles.letter,
                 styles.purpleLetter,
-                { opacity: letterAnims.i },
+                {
+                  opacity: letterAnims.i,
+                  transform: [{ translateX: iPositionX }],
+                },
               ]}
             >
               i
@@ -185,15 +227,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   letter: {
-    fontSize: 72,
+    fontSize: 80,
     fontWeight: '400',
-    fontFamily: 'serif',
+    fontFamily: 'Centaur',
     letterSpacing: 4,
   },
   purpleLetter: {
-    color: '#8B5CF6',
+    color: '#8C00FF',
   },
-  whiteLetter: {
-    color: '#FFFFFF',
+  brownLetter: {
+    color: '#6B7280',
   },
 });

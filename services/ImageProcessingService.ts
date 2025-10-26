@@ -2,6 +2,8 @@
 import * as ImageManipulator from 'expo-image-manipulator';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import * as FileSystem from 'expo-file-system';
+import { Paths } from 'expo-file-system';
+
 
 // Import our comprehensive types
 import {
@@ -22,6 +24,7 @@ const PROCESSING_QUALITY = 0.8;
 const MAX_DIMENSION = 1024;
 const GEMINI_MODEL = 'gemini-1.5-flash';
 const AI_TIMEOUT = 30000; // 30 seconds
+const BACKEND_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
 
 // Enhanced interfaces
 export interface ProcessedImage {
@@ -245,134 +248,143 @@ class ImageProcessingService {
   /**
    * Process clothing image with optimization and error handling
    */
-  async processClothingImage(imageUri: string): Promise<ApiResponse<ProcessedImage>> {
-    const startTime = Date.now();
+  /**
+ * Process clothing image with file system storage (NO BASE64!)
+ */
+async processClothingImage(imageUri: string): Promise<ApiResponse<ProcessedImage>> {
+  const startTime = Date.now();
+  
+  try {
+    console.log('🔄 Processing image:', imageUri);
     
-    try {
-      console.log('🔄 Processing image:', imageUri);
-      
-      // Validate image first
-      const validation = await this.validateImage(imageUri);
-      if (!validation.success) {
-        return validation as ApiResponse<ProcessedImage>;
-      }
-
-      const { width: originalWidth, height: originalHeight, fileSize } = validation.data!;
-
-      // Calculate optimal resize dimensions
-      const shouldResize = originalWidth > MAX_DIMENSION || originalHeight > MAX_DIMENSION;
-      const resizeOptions = shouldResize ? [{
-        resize: {
-          width: originalWidth > originalHeight ? MAX_DIMENSION : undefined,
-          height: originalHeight > originalWidth ? MAX_DIMENSION : undefined,
-        }
-      }] : [];
-
-      // Process image with optimization
-      const manipulatedImage = await ImageManipulator.manipulateAsync(
-        imageUri,
-        resizeOptions,
-        { 
-          compress: PROCESSING_QUALITY, 
-          format: ImageManipulator.SaveFormat.JPEG,
-          base64: true // Convert to Base64 for permanent storage
-        }
-      );
-      
-      if (!manipulatedImage.base64) {
-        throw new Error('Failed to convert image to base64');
-      }
-
-      // Create permanent data URI
-      const permanentUri = `data:image/jpeg;base64,${manipulatedImage.base64}`;
-      
-      // Extract dominant colors (simplified)
-      const dominantColors = this.extractDominantColors(imageUri);
-      
-      const processingTime = Date.now() - startTime;
-      console.log(`✅ Image processed in ${processingTime}ms`);
-      
-      const result: ProcessedImage = {
-        uri: permanentUri,
-        originalUri: imageUri,
-        width: manipulatedImage.width,
-        height: manipulatedImage.height,
-        dominantColors,
-        processedAt: new Date().toISOString(),
-        fileSize: fileSize,
-        format: 'JPEG',
-      };
-      
-      return { success: true, data: result };
-      
-    } catch (error) {
-      console.error('❌ Image processing failed:', error);
-      
-      // Return fallback result to prevent complete failure
-      const fallbackResult: ProcessedImage = {
-        uri: imageUri,
-        originalUri: imageUri,
-        width: 512,
-        height: 512,
-        dominantColors: ['Unknown'],
-        processedAt: new Date().toISOString(),
-        format: 'JPEG',
-      };
-
-      return {
-        success: false,
-        data: fallbackResult, // Provide fallback data
-        error: {
-          code: 'PROCESSING_FAILED',
-          message: error instanceof Error ? error.message : 'Image processing failed',
-          timestamp: new Date().toISOString(),
-          details: error,
-        }
-      };
+    // Validate image first
+    const validation = await this.validateImage(imageUri);
+    if (!validation.success) {
+      return validation as ApiResponse<ProcessedImage>;
     }
+
+    const { width: originalWidth, height: originalHeight, fileSize } = validation.data!;
+
+    // Calculate optimal resize dimensions
+    const shouldResize = originalWidth > MAX_DIMENSION || originalHeight > MAX_DIMENSION;
+    const resizeOptions = shouldResize ? [{
+      resize: {
+        width: originalWidth > originalHeight ? MAX_DIMENSION : undefined,
+        height: originalHeight > originalWidth ? MAX_DIMENSION : undefined,
+      }
+    }] : [];
+
+    // ✅ FIX: Process image WITHOUT base64 conversion
+    const manipulatedImage = await ImageManipulator.manipulateAsync(
+      imageUri,
+      resizeOptions,
+      { 
+        compress: PROCESSING_QUALITY, 
+        format: ImageManipulator.SaveFormat.JPEG,
+        // ❌ REMOVED: base64: true  <-- THIS LINE WAS CAUSING THE ERROR!
+      }
+    );
+    
+    // ✅ FIX: Save to permanent file location instead of Base64
+    const fileName = `clothing_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.jpg`;
+    const permanentPath = `${Paths.document.uri}/${fileName}`;
+    
+    // Copy processed image to permanent location
+    await FileSystem.copyAsync({
+      from: manipulatedImage.uri,
+      to: permanentPath
+    });
+    
+    console.log('✅ Image saved to:', permanentPath);
+    
+    // Extract dominant colors (simplified)
+    const dominantColors = this.extractDominantColors(imageUri);
+    
+    const processingTime = Date.now() - startTime;
+    console.log(`✅ Image processed in ${processingTime}ms`);
+    
+    const result: ProcessedImage = {
+      uri: permanentPath, // ✅ Now stores file path, NOT base64!
+      originalUri: imageUri,
+      width: manipulatedImage.width,
+      height: manipulatedImage.height,
+      dominantColors,
+      processedAt: new Date().toISOString(),
+      fileSize: fileSize,
+      format: 'JPEG',
+    };
+    
+    return { success: true, data: result };
+    
+  } catch (error) {
+    console.error('❌ Image processing failed:', error);
+    
+    // Return fallback result to prevent complete failure
+    const fallbackResult: ProcessedImage = {
+      uri: imageUri,
+      originalUri: imageUri,
+      width: 512,
+      height: 512,
+      dominantColors: ['Unknown'],
+      processedAt: new Date().toISOString(),
+      format: 'JPEG',
+    };
+
+    return {
+      success: false,
+      data: fallbackResult,
+      error: {
+        code: 'PROCESSING_FAILED',
+        message: error instanceof Error ? error.message : 'Image processing failed',
+        timestamp: new Date().toISOString(),
+        details: error,
+      }
+    };
   }
+}
 
   /**
-   * Convert image to base64 with proper error handling
-   */
-  private async imageToBase64(imageUri: string): Promise<string> {
-    try {
-      // Handle different URI formats
-      if (imageUri.startsWith('data:image/')) {
-        // Already a data URI, extract base64 part
-        return imageUri.split(',')[1];
-      }
-
-      if (imageUri.startsWith('file://') || imageUri.startsWith('/')) {
-        // Local file - read directly
-        const base64 = await FileSystem.readAsStringAsync(imageUri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        return base64;
-      }
-
-      // HTTP/HTTPS URL - fetch and convert
-      const response = await fetch(imageUri);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const blob = await response.blob();
-      
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const base64 = reader.result as string;
-          resolve(base64.split(',')[1]); // Remove data:image/...;base64, prefix
-        };
-        reader.onerror = () => reject(new Error('Failed to read blob as base64'));
-        reader.readAsDataURL(blob);
-      });
-    } catch (error) {
-      console.error('Error converting image to base64:', error);
-      throw new Error(`Failed to convert image to base64: ${error instanceof Error ? error.message : 'Unknown error'}`);
+ * Convert image to base64 with proper error handling
+ */
+private async imageToBase64(imageUri: string): Promise<string> {
+  try {
+    // Handle different URI formats
+    if (imageUri.startsWith('data:image/')) {
+      // Already a data URI, extract base64 part
+      return imageUri.split(',')[1];
     }
+
+    if (imageUri.startsWith('file://') || imageUri.startsWith('/')) {
+      // Local file - read directly with proper encoding syntax
+      const base64 = await FileSystem.readAsStringAsync(imageUri, {
+        encoding: 'base64', // Use string literal instead of EncodingType enum
+      });
+      return base64;
+    }
+
+    // HTTP/HTTPS URL - fetch and convert
+    const response = await fetch(imageUri);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const blob = await response.blob();
+    
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result as string;
+        resolve(base64.split(',')[1]); // Remove data:image/...;base64, prefix
+      };
+      reader.onerror = () => reject(new Error('Failed to read blob as base64'));
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    console.error('Error converting image to base64:', error);
+    throw new Error(`Failed to convert image to base64: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
+}
+
 
   /**
    * Analyze clothing with AI using Gemini Vision
@@ -509,7 +521,7 @@ class ImageProcessingService {
   }
 
   private validateFormality(formality: string): FormalityLevel {
-    const validFormalities: FormalityLevel[] = ['casual', 'smart-casual', 'semi-formal', 'formal'];
+    const validFormalities: FormalityLevel[] = ['casual', 'formal'];
     const lower = formality?.toLowerCase() as FormalityLevel;
     return validFormalities.includes(lower) ? lower : 'casual';
   }
@@ -618,21 +630,173 @@ class ImageProcessingService {
    * Placeholder for background removal integration
    * TODO: Integrate with rembg service
    */
-  async removeBackground(imageUri: string): Promise<ApiResponse<string>> {
-    // TODO: Implement rembg integration
-    // For now, return the original image
-    console.log('⚠️ Background removal not yet implemented');
+  /**
+ * Remove background using backend rembg service
+ */
+async removeBackground(imageUri: string): Promise<ApiResponse<string>> {
+  try {
+    console.log('🔄 Sending image to backend for background removal...');
     
+    // Create FormData for file upload
+    const formData = new FormData();
+    formData.append('file', {
+      uri: imageUri,
+      type: 'image/jpeg',
+      name: 'clothing.jpg',
+    } as any);
+    
+    // Send to backend
+    const response = await fetch(`${BACKEND_URL}/api/remove-background`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      console.log('✅ Background removed successfully');
+      return {
+        success: true,
+        data: result.data.processed_image,
+        message: 'Background removed successfully'
+      };
+    } else {
+      throw new Error(result.error || 'Background removal failed');
+    }
+    
+  } catch (error) {
+    console.error('❌ Background removal failed:', error);
     return {
       success: false,
-      data: imageUri, // Return original for now
+      data: imageUri, // Return original on failure
       error: {
-        code: 'NOT_IMPLEMENTED',
-        message: 'Background removal feature coming soon',
+        code: 'BACKGROUND_REMOVAL_FAILED',
+        message: error instanceof Error ? error.message : 'Background removal failed',
         timestamp: new Date().toISOString(),
+        details: error,
       }
     };
   }
+}
+  /**
+ * Detect dominant colors using backend service
+ */
+async detectColors(imageUri: string): Promise<ApiResponse<string[]>> {
+  try {
+    console.log('🎨 Detecting colors via backend...');
+    
+    const formData = new FormData();
+    formData.append('file', {
+      uri: imageUri,
+      type: 'image/jpeg',
+      name: 'clothing.jpg',
+    } as any);
+    
+    const response = await fetch(`${BACKEND_URL}/api/detect-colors`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      const colors = result.data.dominant_colors.map((c: any) => c.hex);
+      console.log('✅ Colors detected:', colors);
+      return {
+        success: true,
+        data: colors,
+      };
+    } else {
+      throw new Error(result.error || 'Color detection failed');
+    }
+    
+  } catch (error) {
+    console.error('❌ Color detection failed:', error);
+    return {
+      success: false,
+      data: ['#FFFFFF'], // Fallback color
+      error: {
+        code: 'COLOR_DETECTION_FAILED',
+        message: error instanceof Error ? error.message : 'Color detection failed',
+        timestamp: new Date().toISOString(),
+        details: error,
+      }
+    };
+  }
+}
+ /**
+ * Process image with backend (bg removal + color detection + AI classification)
+ */
+async processWithBackend(imageUri: string): Promise<ApiResponse<ProcessedImageWithAI>> {
+  const startTime = Date.now();
+  
+  try {
+    console.log('🚀 Processing with backend services...');
+    
+    const formData = new FormData();
+    formData.append('file', {
+      uri: imageUri,
+      type: 'image/jpeg',
+      name: 'clothing.jpg',
+    } as any);
+    
+    const response = await fetch(`${BACKEND_URL}/api/process-clothing`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Accept': 'application/json',
+      },
+    
+    });
+    
+    const result = await response.json();
+    
+    if (!result.success) {
+      throw new Error(result.error || 'Backend processing failed');
+    }
+    
+    // Run Gemini AI analysis in parallel
+    const aiResult = await this.analyzeClothingWithAI(imageUri);
+    
+    const processingTime = Date.now() - startTime;
+    
+    const processedResult: ProcessedImageWithAI = {
+      uri: result.data.processed_image,
+      originalUri: imageUri,
+      width: result.data.width,
+      height: result.data.height,
+      dominantColors: result.data.dominant_colors.map((c: any) => c.hex),
+      processedAt: new Date().toISOString(),
+      format: 'PNG',
+      aiAnalysis: aiResult.data,
+      backgroundRemoved: true,
+      processingTime,
+    };
+    
+    console.log(`✅ Backend processing completed in ${processingTime}ms`);
+    
+    return {
+      success: true,
+      data: processedResult,
+      message: 'Processing completed successfully'
+    };
+    
+  } catch (error) {
+    console.error('❌ Backend processing failed:', error);
+    
+    // Fallback to local processing
+    console.log('⚠️ Falling back to local processing...');
+    return await this.processClothingImageWithAI(imageUri);
+  }
+}
+
+
 
   /**
    * Get service health status
@@ -648,6 +812,23 @@ class ImageProcessingService {
       lastTestedAt: new Date().toISOString(),
     };
   }
+  /**
+ * Delete image file from file system when item is deleted
+ */
+async deleteImageFile(imageUri: string): Promise<void> {
+  try {
+   if (imageUri.includes(Paths.document.uri)) {
+      const fileInfo = await FileSystem.getInfoAsync(imageUri);
+      if (fileInfo.exists) {
+        await FileSystem.deleteAsync(imageUri);
+        console.log('✅ Deleted image file:', imageUri);
+      }
+    }
+  } catch (error) {
+    console.error('❌ Failed to delete image file:', error);
+  }
+}
+
 }
 
 // Export singleton instance
@@ -669,6 +850,18 @@ export const isAIAvailable = () =>
 
 export const testAIConnection = () => 
   imageProcessingService.testAIConnection();
+export const removeBackground = (imageUri: string) => 
+  imageProcessingService.removeBackground(imageUri);
+
+export const detectColors = (imageUri: string) => 
+  imageProcessingService.detectColors(imageUri);
+
+export const processWithBackend = (imageUri: string) => 
+  imageProcessingService.processWithBackend(imageUri);
+
+export const deleteImageFile = (imageUri: string) => 
+  imageProcessingService.deleteImageFile(imageUri);
+
 
 // Export service class for direct use
 export { ImageProcessingService };

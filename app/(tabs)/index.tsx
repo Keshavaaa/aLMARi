@@ -1,5 +1,5 @@
 // app/(tabs)/index.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,26 +9,34 @@ import {
   Dimensions,
   Alert,
   Platform,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Link, router } from 'expo-router';
+import { router } from 'expo-router';
+import { StyleSheet } from 'react-native';
+import { OutfitRecommendation } from '../../types/clothing';
+import { Image } from 'react-native';
+import calendarService from '../../services/CalendarService';
 import {
   Search,
   Bell,
   Heart,
   Plus,
   Sparkles,
-  TrendingUp,
   Shirt,
   Zap,
   Calendar,
   Sun,
   Cloud,
   Droplets,
-  Clock,
+  CloudRain,
+  CloudSnow,
+  Wind,
   ChevronRight,
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
+
 import {
   Colors,
   Spacing,
@@ -37,26 +45,114 @@ import {
   Shadows,
   IconSizes,
 } from '../../constants/Design';
-import TestGeminiAPI from '../../components/TestGeminiAPI';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AIService } from '../../services/AIService';
 import wardrobeService from '../../services/WardrobeService';
 import { WeatherService } from '../../services/WeatherServices';
-// Get device width for responsive layouts
+import { WeatherCondition } from '../../types/clothing';
+
 const { width } = Dimensions.get('window');
 
 export default function Home() {
-  // State for today's outfit recommendation
-  const [todaysOutfit, setTodaysOutfit] = useState(null);
-  const [weatherData, setWeatherData] = useState({
-    temp: 24,
-    condition: 'sunny',
-    description: 'Sunny',
-  });
+  // State for weather and wardrobe
+  const [weather, setWeather] = useState<WeatherCondition | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [wardrobeCount, setWardrobeCount] = useState(0);
+  const [laundryCount, setLaundryCount] = useState(0);
 
-  /**
-   * Handle bulk image upload for adding multiple clothing items
-   */
+  // State for search
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [todaysOutfit, setTodaysOutfit] = useState<OutfitRecommendation | null>(
+    null,
+  );
+
+  useEffect(() => {
+    loadHomeData();
+  }, []);
+
+  const loadHomeData = async () => {
+    try {
+      setWeatherLoading(true);
+
+      // Load weather
+      const currentWeather = await WeatherService.getCurrentWeather();
+      setWeather(currentWeather);
+
+      // Load wardrobe stats
+      const items = await wardrobeService.getWardrobeItems();
+      setWardrobeCount(items.length);
+      setLaundryCount(items.filter((item) => item.inLaundry).length);
+
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const scheduledOutfit = await calendarService.getOutfitForDate(today); 
+
+        if (scheduledOutfit) {
+          setTodaysOutfit(scheduledOutfit.outfitRecommendation);
+        } else {
+          setTodaysOutfit(null);
+        }
+      } catch (error) {
+        console.error("Failed to load today's outfit:", error);
+        setTodaysOutfit(null);
+      }
+    } catch (error) {
+      console.error('Failed to load home data:', error);
+    } finally {
+      setWeatherLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadHomeData();
+  };
+
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query);
+
+    if (query.trim().length === 0) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const items = await wardrobeService.getWardrobeItems();
+      const filtered = items.filter(
+        (item) =>
+          item.name.toLowerCase().includes(query.toLowerCase()) ||
+          item.category.toLowerCase().includes(query.toLowerCase()) ||
+          item.color.toLowerCase().includes(query.toLowerCase()),
+      );
+      setSearchResults(filtered as any);
+    } catch (error) {
+      console.error('Search failed:', error);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const generateTodaysOutfit = () => {
+    if (wardrobeCount === 0) {
+      Alert.alert(
+        'Empty Wardrobe',
+        'Add some clothing items first to generate outfit recommendations!',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Add Items', onPress: () => router.push('/(tabs)/camera') },
+        ],
+      );
+      return;
+    }
+
+    // Navigate to outfit tab to generate recommendations
+    router.push('/(tabs)/outfit');
+  };
+
   const handleBulkUpload = async () => {
     try {
       const { status } =
@@ -66,27 +162,50 @@ export default function Home() {
         Alert.alert(
           'Permission Required',
           'Please allow gallery access to upload your clothing photos.',
-          [{ text: 'OK' }],
         );
         return;
       }
 
+      // Allow multiple selection
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsMultipleSelection: true,
-        selectionLimit: 10,
         quality: 0.8,
-        aspect: [1, 1],
+        selectionLimit: 10, // Limit to 10 images at once
       });
 
-      if (!result.canceled && result.assets) {
+      if (!result.canceled && result.assets && result.assets.length > 0) {
         Alert.alert(
-          'Upload Successful! 📸',
-          `Selected ${result.assets.length} item${result.assets.length > 1 ? 's' : ''}. Processing and adding to your wardrobe...`,
+          'Processing Images',
+          `Processing ${result.assets.length} image${result.assets.length > 1 ? 's' : ''}. This may take a moment...`,
           [
             {
-              text: 'View Wardrobe',
-              onPress: () => router.push('/(tabs)/wardrobe'),
+              text: 'OK',
+              onPress: async () => {
+                let successCount = 0;
+                let failCount = 0;
+
+                // Process each image
+                for (const asset of result.assets) {
+                  try {
+                    // Use your existing wardrobe service
+                    await wardrobeService.saveClothingWithImage(asset.uri);
+                    successCount++;
+                  } catch (error) {
+                    console.error('Failed to process image:', error);
+                    failCount++;
+                  }
+                }
+
+                // Reload wardrobe count
+                loadHomeData();
+
+                // Show results
+                Alert.alert(
+                  'Upload Complete!',
+                  `✅ ${successCount} items added successfully${failCount > 0 ? `\n❌ ${failCount} failed` : ''}`,
+                );
+              },
             },
           ],
         );
@@ -96,139 +215,55 @@ export default function Home() {
     }
   };
 
-  /**
-   * Generate today's outfit recommendation using AI
-   */
-  const generateTodaysOutfit = async () => {
-    try {
-      // Show loading alert
-      Alert.alert(
-        'Generating Outfit... ✨',
-        'AI is analyzing your wardrobe, weather, and style preferences...',
-        [],
-        { cancelable: false },
-      );
+  const getWeatherIcon = () => {
+    if (!weather) return Sun;
 
-      // Get current weather
-      const weather = await WeatherService.getCurrentWeather();
-
-      // Get wardrobe items
-      const wardrobeItems = await wardrobeService.getWardrobeItems();
-
-      if (wardrobeItems.length === 0) {
-        Alert.alert(
-          'Empty Wardrobe',
-          'Add some clothing items to your wardrobe first!',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Add Items', onPress: () => router.push('/(tabs)/camera') },
-          ],
-        );
-        return;
-      }
-
-      // Generate outfit with AI
-      const outfitRecommendation = await AIService.generateOutfitRecommendation(
-        wardrobeItems,
-        weather,
-        'casual day',
-      );
-
-      // Store the recommendation for the outfit screen
-      await AsyncStorage.setItem(
-        'todaysOutfit',
-        JSON.stringify(outfitRecommendation),
-      );
-
-      // Show success and navigate
-      Alert.alert(
-        'Outfit Ready! ✨',
-        `Perfect outfit for ${weather.temperature}°C ${weather.condition} weather!\n\n${outfitRecommendation.reasoning}`,
-        [
-          { text: 'Stay Here', style: 'cancel' },
-          {
-            text: 'View Outfit',
-            onPress: () => router.push('/(tabs)/outfit'),
-          },
-        ],
-      );
-    } catch (error) {
-      console.error('Outfit generation failed:', error);
-      Alert.alert(
-        'Error',
-        'Failed to generate outfit. Please check your internet connection and try again.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Try Again', onPress: generateTodaysOutfit },
-        ],
-      );
+    switch (weather.condition) {
+      case 'sunny':
+        return Sun;
+      case 'rainy':
+        return CloudRain;
+      case 'snowy':
+        return CloudSnow;
+      case 'windy':
+        return Wind;
+      case 'cloudy':
+        return Cloud;
+      default:
+        return Sun;
     }
   };
 
+  const WeatherIcon = getWeatherIcon();
 
-  /**
-   * Handle laundry view navigation
-   */
-  const viewLaundryItems = () => {
-    // TODO: Navigate to filtered wardrobe view showing only laundry items
-    router.push('/(tabs)/wardrobe'); // Will add filter parameter later
-  };
-
-  // Show mobile-only message for web users
   if (Platform.OS === 'web') {
     return (
       <SafeAreaView style={styles.webContainer}>
         <Text style={styles.webMessage}>
           📱 aLMARi works best on mobile devices
         </Text>
-        <Text style={styles.webSubtext}>
-          Download the app or open this link on your phone for the full wardrobe
-          experience
-        </Text>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header Section */}
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
-          <Text style={styles.brandText}>aLMARi</Text>
+          <Text style={styles.logo}>
+            <Text style={styles.logoA}>a</Text>
+            <Text style={styles.logoMain}>LMAR</Text>
+            <Text style={styles.logoI}>i</Text>
+          </Text>
 
-          <View style={styles.headerActions}>
-            <TouchableOpacity
-              style={styles.headerButton}
-              onPress={() =>
-                Alert.alert(
-                  'Coming Soon',
-                  'Notifications feature will be available soon!',
-                )
-              }
-            >
-              <Bell
-                size={IconSizes.md}
-                color={Colors.neutral[600]}
-                strokeWidth={2}
-              />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.headerButton}
-              onPress={() =>
-                Alert.alert(
-                  'Coming Soon',
-                  'Favorites feature will be available soon!',
-                )
-              }
-            >
-              <Heart
-                size={IconSizes.md}
-                color={Colors.neutral[600]}
-                strokeWidth={2}
-              />
-            </TouchableOpacity>
-          </View>
+          <Text style={styles.dateText}>
+            {new Date().toLocaleDateString('en-US', {
+              weekday: 'long',
+              month: 'long',
+              day: 'numeric',
+            })}
+          </Text>
         </View>
 
         {/* Search Bar */}
@@ -238,353 +273,242 @@ export default function Home() {
             placeholder="Search your wardrobe..."
             placeholderTextColor={Colors.neutral[400]}
             style={styles.searchInput}
+            value={searchQuery}
+            onChangeText={handleSearch}
           />
         </View>
+
+        {/* Search Results */}
+        {searchQuery.length > 0 && (
+          <View style={styles.searchResultsContainer}>
+            {isSearching ? (
+              <ActivityIndicator color={Colors.primary[500]} />
+            ) : searchResults.length > 0 ? (
+              searchResults.map((item: any) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.searchResultItem}
+                  onPress={() => {
+                    setSearchQuery('');
+                    router.push({
+                      pathname: '/item-details',
+                      params: { id: item.id },
+                    });
+                  }}
+                >
+                  <Text style={styles.searchResultName}>{item.name}</Text>
+                  <Text style={styles.searchResultDetails}>
+                    {item.category} • {item.color}
+                  </Text>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <Text style={styles.noResultsText}>No items found</Text>
+            )}
+          </View>
+        )}
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={Colors.primary[500]}
+          />
+        }
       >
-        {/* Today's Outfit Recommendation Card */}
-        <TodaysOutfitCard
-          weatherData={weatherData}
-          onGenerateOutfit={generateTodaysOutfit}
-          outfit={todaysOutfit}
-        />
+        {/* Weather Card */}
+        <View style={styles.weatherCard}>
+          <View style={styles.weatherHeader}>
+            <View style={styles.weatherInfo}>
+              <WeatherIcon
+                size={40}
+                color={Colors.primary[500]}
+                strokeWidth={1.5}
+              />
+              <View style={styles.weatherDetails}>
+                <Text style={styles.temperature}>
+                  {weatherLoading ? '--' : weather?.temperature}°C
+                </Text>
+                <Text style={styles.weatherCondition}>
+                  {weatherLoading ? 'Loading...' : weather?.description}
+                </Text>
+                <Text style={styles.weatherLocation}>
+                  {weatherLoading ? '...' : weather?.location}
+                </Text>
+              </View>
+            </View>
 
-        {/* Quick Actions Section */}
+            {!weatherLoading && weather && (
+              <View style={styles.weatherStats}>
+                <View style={styles.weatherStat}>
+                  <Text style={styles.weatherStatLabel}>Humidity</Text>
+                  <Text style={styles.weatherStatValue}>
+                    {weather.humidity}%
+                  </Text>
+                </View>
+                <View style={styles.weatherStat}>
+                  <Text style={styles.weatherStatLabel}>Wind</Text>
+                  <Text style={styles.weatherStatValue}>
+                    {weather.windSpeed} km/h
+                  </Text>
+                </View>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {/* Today's Outfit Card */}
+        <View style={styles.todaysOutfitCard}>
+          <View style={styles.outfitHeader}>
+            <View>
+              <Text style={styles.outfitTitle}>Today's Outfit</Text>
+              <Text style={styles.outfitSubtitle}>
+                AI-powered recommendations
+              </Text>
+            </View>
+
+            {!todaysOutfit && (
+              <TouchableOpacity
+                style={styles.generateButton}
+                onPress={generateTodaysOutfit}
+              >
+                <Sparkles size={16} color={Colors.text.inverse} />
+                <Text style={styles.generateButtonText}>Generate</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <View style={styles.outfitContent}>
+            {todaysOutfit ? (
+             
+              <View style={styles.todaysOutfitPreview}>
+                <View style={styles.todaysOutfitItems}>
+                  {todaysOutfit.items.slice(0, 2).map((item, index) => (
+                    <View key={index} style={styles.todaysOutfitItemCard}>
+                      <Image
+                        source={{ uri: item.imageUri }}
+                        style={styles.todaysOutfitImage}
+                        resizeMode="cover"
+                      />
+                    </View>
+                  ))}
+                </View>
+                <Text style={styles.todaysOutfitOccasion}>
+                  {todaysOutfit.occasion}
+                </Text>
+                <Text style={styles.todaysOutfitReasoning} numberOfLines={2}>
+                  {todaysOutfit.reasoning}
+                </Text>
+                <TouchableOpacity
+                  style={styles.viewOutfitButton}
+                  onPress={() => router.push('/(tabs)/outfit')}
+                >
+                  <Text style={styles.viewOutfitButtonText}>
+                    View Full Outfit
+                  </Text>
+                  <ChevronRight size={16} color={Colors.primary[500]} />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                <Shirt size={80} color={Colors.neutral[200]} strokeWidth={1} />
+                <Text style={styles.outfitEmptyText}>
+                  Get personalized outfit suggestions based on weather,
+                  occasion, and your style
+                </Text>
+              </>
+            )}
+          </View>
+        </View>
+
+        {/* Quick Stats */}
+        <View style={styles.statsRow}>
+          <StatCard
+            icon={Shirt}
+            label="Items"
+            value={wardrobeCount}
+            color={Colors.primary[500]}
+          />
+          <StatCard
+            icon={Droplets}
+            label="Laundry"
+            value={laundryCount}
+            color={Colors.info}
+          />
+          <StatCard
+            icon={Heart}
+            label="Favorites"
+            value={0}
+            color={Colors.error}
+          />
+        </View>
+
+        {/* Quick Actions */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Quick Actions</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.quickActionsContainer}
-          >
+          <View style={styles.quickActionsGrid}>
             <QuickActionCard
               icon={Plus}
               title="Add Item"
-              href="/(tabs)/camera"
+              onPress={() => router.push('/(tabs)/camera')}
               color={Colors.primary[500]}
             />
             <QuickActionCard
               icon={Sparkles}
-              title="Get Outfit"
-              href="/(tabs)/outfit"
+              title="Generate Outfit"
+              onPress={generateTodaysOutfit}
               color={Colors.success}
             />
             <QuickActionCard
               icon={Zap}
               title="Bulk Upload"
-              color={Colors.warning}
               onPress={handleBulkUpload}
+              color={Colors.warning}
             />
             <QuickActionCard
               icon={Calendar}
-              title="Schedule"
-              href="/(tabs)/outfit" // Will add calendar view later
+              title="Plan Outfits"
+              onPress={() => router.push('/calendar-screen')}
               color={Colors.info}
             />
-          </ScrollView>
-        </View>
-
-        {/* Outfit Planning & Laundry Row */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Outfit Planning</Text>
-          <View style={styles.planningRow}>
-            {/* Outfit Calendar Card */}
-            <OutfitCalendarCard />
-
-            {/* Laundry Status Card */}
-            <LaundryStatusCard onPress={viewLaundryItems} />
           </View>
-        </View>
-
-        {/* Categories Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Explore Your Wardrobe</Text>
-          <View style={styles.categoriesGrid}>
-            <View style={styles.categoryRow}>
-              <CategoryCard
-                title="My Closet"
-                subtitle="Browse all items"
-                backgroundColor={Colors.neutral[100]}
-                href="/(tabs)/wardrobe"
-                emoji="👔"
-              />
-              <CategoryCard
-                title="Outfits"
-                subtitle="Saved looks"
-                backgroundColor={Colors.primary[50]}
-                href="/(tabs)/outfit"
-                emoji="✨"
-              />
-            </View>
-            <View style={styles.categoryRow}>
-              <CategoryCard
-                title="Add Items"
-                subtitle="Take photos"
-                backgroundColor={Colors.success + '15'}
-                href="/(tabs)/camera"
-                emoji="📷"
-              />
-              <CategoryCard
-                title="Profile"
-                subtitle="Your style"
-                backgroundColor={Colors.warning + '15'}
-                href="/(tabs)/profile"
-                emoji="👤"
-              />
-            </View>
-          </View>
-        </View>
-
-        {/* Recently Added Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Recently Added</Text>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/wardrobe')}>
-              <Text style={styles.seeAllText}>See All</Text>
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.recentItemsContainer}
-          >
-            {['Shirt', 'Jeans', 'Dress', 'Jacket'].map((item, index) => (
-              <RecentItemCard key={index} itemName={item} />
-            ))}
-          </ScrollView>
         </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-/**
- * Today's Outfit Recommendation Card
- * Shows weather-based AI outfit suggestion
- */
-const TodaysOutfitCard = ({
-  weatherData,
-  onGenerateOutfit,
-  outfit,
-}: {
-  weatherData: any;
-  onGenerateOutfit: () => void;
-  outfit: any;
-}) => {
-  const WeatherIcon =
-    weatherData.condition === 'sunny'
-      ? Sun
-      : weatherData.condition === 'cloudy'
-        ? Cloud
-        : Droplets;
-<TestGeminiAPI />;
-  return (
-    <View style={styles.todaysOutfitCard}>
-      <View style={styles.outfitHeader}>
-        <View>
-          <Text style={styles.outfitTitle}>Today's Outfit</Text>
-          <View style={styles.weatherInfo}>
-            <WeatherIcon size={16} color={Colors.primary[500]} />
-            <Text style={styles.weatherText}>
-              {weatherData.temp}°C • {weatherData.description}
-            </Text>
-          </View>
-        </View>
-        <TouchableOpacity
-          style={styles.generateButton}
-          onPress={onGenerateOutfit}
-        >
-          <Sparkles size={16} color={Colors.background.primary} />
-          <Text style={styles.generateButtonText}>Generate</Text>
-        </TouchableOpacity>
-      </View>
+const StatCard = ({ icon: Icon, label, value, color }: any) => (
+  <View style={styles.statCard}>
+    <Icon size={24} color={color} strokeWidth={2} />
+    <Text style={[styles.statValue, { color }]}>{value}</Text>
+    <Text style={styles.statLabel}>{label}</Text>
+  </View>
+);
 
-      {outfit ? (
-        <View style={styles.webContainer}>
-          {/* TODO: Show actual outfit recommendation */}
-          <Text style={styles.webMessage}>Perfect for today's weather!</Text>
-        </View>
-      ) : (
-        <View style={styles.webContainer}>
-          <Text style={styles.webMessage}>
-            Get AI-powered outfit recommendations based on weather, occasion,
-            and your style
-          </Text>
-        </View>
-      )}
+const QuickActionCard = ({ icon: Icon, title, onPress, color }: any) => (
+  <TouchableOpacity style={styles.quickActionCard} onPress={onPress}>
+    <View style={[styles.quickActionIcon, { backgroundColor: color + '15' }]}>
+      <Icon size={IconSizes.lg} color={color} strokeWidth={2} />
     </View>
-  );
-};
-
-/**
- * Outfit Calendar Card
- * Shows upcoming scheduled outfits
- */
-const OutfitCalendarCard = () => (
-  <TouchableOpacity
-    style={styles.planningCard}
-    onPress={() => {
-      // TODO: Navigate to calendar view
-      Alert.alert(
-        'Coming Soon',
-        'Outfit calendar feature will be available soon!',
-      );
-    }}
-  >
-    <View style={styles.planningCardHeader}>
-      <Calendar size={IconSizes.md} color={Colors.primary[500]} />
-      <Text style={styles.planningCardTitle}>Outfit Calendar</Text>
-    </View>
-    <Text style={styles.planningCardSubtitle}>
-      Schedule outfits for upcoming events
-    </Text>
-    <View style={styles.planningCardFooter}>
-      <Text style={styles.planningCardCount}>3 scheduled</Text>
-      <ChevronRight size={16} color={Colors.neutral[400]} />
-    </View>
+    <Text style={styles.quickActionTitle}>{title}</Text>
   </TouchableOpacity>
 );
 
-/**
- * Laundry Status Card
- * Shows items currently in laundry
- */
-const LaundryStatusCard = ({ onPress }: { onPress: () => void }) => (
-  <TouchableOpacity style={styles.planningCard} onPress={onPress}>
-    <View style={styles.planningCardHeader}>
-      <Droplets size={IconSizes.md} color={Colors.info} />
-      <Text style={styles.planningCardTitle}>Laundry</Text>
-    </View>
-    <Text style={styles.planningCardSubtitle}>Items being washed</Text>
-    <View style={styles.planningCardFooter}>
-      <Text style={styles.planningCardCount}>5 items</Text>
-      <ChevronRight size={16} color={Colors.neutral[400]} />
-    </View>
-  </TouchableOpacity>
-);
-
-/**
- * Quick Action Card Component
- */
-const QuickActionCard = ({
-  icon: Icon,
-  title,
-  href,
-  color,
-  onPress,
-}: {
-  icon: any;
-  title: string;
-  href?: string;
-  color: string;
-  onPress?: () => void;
-}) => {
-  const content = (
-    <TouchableOpacity
-      style={styles.quickActionCard}
-      activeOpacity={0.7}
-      onPress={onPress}
-    >
-      <View style={[styles.quickActionIcon, { backgroundColor: color + '15' }]}>
-        <Icon size={IconSizes.lg} color={color} strokeWidth={2} />
-      </View>
-      <Text style={styles.quickActionTitle}>{title}</Text>
-    </TouchableOpacity>
-  );
-
-  if (href) {
-    return (
-      <Link href={href as any} asChild>
-        {content}
-      </Link>
-    );
-  }
-
-  return content;
-};
-
-/**
- * Category Card Component
- */
-const CategoryCard = ({
-  title,
-  subtitle,
-  backgroundColor,
-  href,
-  emoji,
-}: {
-  title: string;
-  subtitle: string;
-  backgroundColor: string;
-  href: string;
-  emoji: string;
-}) => (
-  <Link href={href as any} asChild>
-    <TouchableOpacity
-      style={[styles.categoryCard, { backgroundColor }]}
-      activeOpacity={0.8}
-    >
-      <View style={styles.categoryContent}>
-        <Text style={styles.categoryTitle}>{title}</Text>
-        <Text style={styles.categorySubtitle}>{subtitle}</Text>
-      </View>
-      <Text style={styles.categoryEmoji}>{emoji}</Text>
-    </TouchableOpacity>
-  </Link>
-);
-
-/**
- * Recent Item Card Component
- */
-const RecentItemCard = ({ itemName }: { itemName: string }) => (
-  <TouchableOpacity style={styles.recentItemCard} activeOpacity={0.7}>
-    <View style={styles.recentItemPlaceholder}>
-      <Shirt
-        size={IconSizes.xl}
-        color={Colors.neutral[400]}
-        strokeWidth={1.5}
-      />
-    </View>
-    <Text style={styles.recentItemName}>{itemName}</Text>
-  </TouchableOpacity>
-);
-
-const styles = {
-  // Main Container
+const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background.secondary,
   },
 
-  // Web-specific styles
-  webContainer: {
-    flex: 1,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    padding: Spacing.xxl,
-    backgroundColor: Colors.background.primary,
+  scrollContent: {
+    paddingBottom: 120,
   },
 
-  webMessage: {
-    fontSize: Typography.sizes.xl,
-    fontWeight: Typography.weights.semibold,
-    color: Colors.text.primary,
-    textAlign: 'center' as const,
-    marginBottom: Spacing.sm,
-  },
-
-  webSubtext: {
-    fontSize: Typography.sizes.md,
-    color: Colors.text.secondary,
-    textAlign: 'center' as const,
-  },
-
-  // Header
   header: {
     backgroundColor: Colors.background.primary,
     paddingBottom: Spacing.md,
@@ -592,35 +516,31 @@ const styles = {
   },
 
   headerContent: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
     paddingHorizontal: Spacing.md,
-    paddingBottom: Spacing.md,
+    paddingTop: Spacing.sm,
+    marginBottom: Spacing.md,
   },
 
-  brandText: {
-    fontSize: Typography.sizes.title,
-    fontWeight: Typography.weights.light,
-    color: Colors.primary[500],
-    fontFamily: 'serif',
-    letterSpacing: 1.2,
+  logo: {
+    fontSize: 36,
+    fontWeight: '400' as const,
+    fontFamily: 'Centaur',
+    marginBottom: Spacing.xs,
+    letterSpacing: 1,
   },
 
-  headerActions: {
-    flexDirection: 'row' as const,
-    gap: Spacing.sm,
+  logoA: { color: Colors.primary[500] },
+  logoMain: { color: Colors.text.primary },
+  logoI: { color: Colors.primary[500] },
+
+  dateText: {
+    fontSize: Typography.sizes.sm,
+    color: Colors.text.secondary,
   },
 
-  headerButton: {
-    padding: Spacing.sm,
-    borderRadius: BorderRadius.sm,
-  },
-
-  // Search
   searchContainer: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: Colors.neutral[50],
     borderRadius: BorderRadius.md,
     paddingHorizontal: Spacing.md,
@@ -637,52 +557,128 @@ const styles = {
     color: Colors.text.primary,
   },
 
-  // Scroll Content
-  scrollContent: {
-    paddingBottom: 100,
+  searchResultsContainer: {
+    marginHorizontal: Spacing.md,
+    marginTop: Spacing.sm,
+    backgroundColor: Colors.background.card,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    maxHeight: 300,
   },
 
-  // Today's Outfit Card
+  searchResultItem: {
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border.light,
+  },
+
+  searchResultName: {
+    fontSize: Typography.sizes.md,
+    fontWeight: Typography.weights.semibold,
+    color: Colors.text.primary,
+  },
+
+  searchResultDetails: {
+    fontSize: Typography.sizes.sm,
+    color: Colors.text.secondary,
+  },
+
+  noResultsText: {
+    fontSize: Typography.sizes.sm,
+    color: Colors.text.secondary,
+    textAlign: 'center',
+  },
+
+  weatherCard: {
+    backgroundColor: Colors.background.primary,
+    marginHorizontal: Spacing.md,
+    marginTop: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    ...Shadows.sm,
+  },
+
+  weatherHeader: { gap: Spacing.md },
+
+  weatherInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+
+  weatherDetails: { flex: 1 },
+
+  temperature: {
+    fontSize: Typography.sizes.xxl,
+    fontWeight: Typography.weights.bold,
+    color: Colors.text.primary,
+  },
+
+  weatherCondition: {
+    fontSize: Typography.sizes.md,
+    color: Colors.text.secondary,
+    textTransform: 'capitalize',
+  },
+
+  weatherLocation: {
+    fontSize: Typography.sizes.sm,
+    color: Colors.text.tertiary,
+  },
+
+  weatherStats: {
+    flexDirection: 'row',
+    gap: Spacing.lg,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border.light,
+  },
+
+  weatherStat: { flex: 1 },
+
+  weatherStatLabel: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.text.tertiary,
+    marginBottom: 4,
+  },
+
+  weatherStatValue: {
+    fontSize: Typography.sizes.md,
+    fontWeight: Typography.weights.semibold,
+    color: Colors.text.primary,
+  },
+
   todaysOutfitCard: {
     backgroundColor: Colors.background.primary,
     marginHorizontal: Spacing.md,
     marginTop: Spacing.md,
     borderRadius: BorderRadius.lg,
     padding: Spacing.lg,
-    ...Shadows.md,
-    borderWidth: 1,
-    borderColor: Colors.border.light,
+    ...Shadows.sm,
   },
 
   outfitHeader: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'flex-start' as const,
-    marginBottom: Spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: Spacing.lg,
   },
 
   outfitTitle: {
     fontSize: Typography.sizes.lg,
     fontWeight: Typography.weights.semibold,
     color: Colors.text.primary,
-    marginBottom: 4,
   },
 
-  weatherInfo: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 4,
-  },
-
-  weatherText: {
+  outfitSubtitle: {
     fontSize: Typography.sizes.sm,
     color: Colors.text.secondary,
+    marginTop: 4,
   },
 
   generateButton: {
     backgroundColor: Colors.primary[500],
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.md,
@@ -691,194 +687,172 @@ const styles = {
 
   generateButtonText: {
     fontSize: Typography.sizes.sm,
-    fontWeight: Typography.weights.medium,
-    color: Colors.background.primary,
+    fontWeight: Typography.weights.semibold,
+    color: Colors.text.inverse,
   },
 
-  noOutfitState: {
-    alignItems: 'center' as const,
-    paddingVertical: Spacing.lg,
+  outfitContent: {
+    alignItems: 'center',
+    paddingVertical: Spacing.xl,
   },
 
-  noOutfitText: {
+  outfitEmptyText: {
     fontSize: Typography.sizes.sm,
     color: Colors.text.secondary,
-    textAlign: 'center' as const,
+    textAlign: 'center',
+    marginTop: Spacing.md,
     lineHeight: Typography.lineHeights.relaxed * Typography.sizes.sm,
   },
 
-  // Planning Row
-  planningRow: {
-    flexDirection: 'row' as const,
-    gap: Spacing.md,
+  statsRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    marginTop: Spacing.md,
   },
 
-  planningCard: {
+  statCard: {
     flex: 1,
     backgroundColor: Colors.background.primary,
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
+    alignItems: 'center',
     ...Shadows.sm,
-    borderWidth: 1,
-    borderColor: Colors.border.light,
   },
 
-  planningCardHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: Spacing.xs,
-    marginBottom: Spacing.xs,
+  statValue: {
+    fontSize: Typography.sizes.xl,
+    fontWeight: Typography.weights.bold,
+    marginTop: Spacing.xs,
   },
 
-  planningCardTitle: {
-    fontSize: Typography.sizes.md,
-    fontWeight: Typography.weights.semibold,
-    color: Colors.text.primary,
-  },
-
-  planningCardSubtitle: {
-    fontSize: Typography.sizes.sm,
-    color: Colors.text.secondary,
-    marginBottom: Spacing.sm,
-  },
-
-  planningCardFooter: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-  },
-
-  planningCardCount: {
+  statLabel: {
     fontSize: Typography.sizes.xs,
-    fontWeight: Typography.weights.medium,
-    color: Colors.primary[500],
+    color: Colors.text.secondary,
+    marginTop: 4,
   },
 
-  // Sections
   section: {
     paddingHorizontal: Spacing.md,
     marginTop: Spacing.xl,
-  },
-
-  sectionHeader: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-    marginBottom: Spacing.md,
   },
 
   sectionTitle: {
     fontSize: Typography.sizes.lg,
     fontWeight: Typography.weights.semibold,
     color: Colors.text.primary,
+    marginBottom: Spacing.md,
   },
 
-  seeAllText: {
-    fontSize: Typography.sizes.sm,
-    fontWeight: Typography.weights.medium,
-    color: Colors.primary[500],
-  },
-
-  // Quick Actions
-  quickActionsContainer: {
-    gap: Spacing.md,
-    paddingRight: Spacing.md,
+  quickActionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
   },
 
   quickActionCard: {
-    backgroundColor: Colors.background.card,
+    width: (width - Spacing.md * 3) / 2,
+    backgroundColor: Colors.background.primary,
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
-    alignItems: 'center' as const,
-    minWidth: 85,
+    alignItems: 'center',
     ...Shadows.sm,
-    borderWidth: 1,
-    borderColor: Colors.border.light,
   },
 
   quickActionIcon: {
     width: 48,
     height: 48,
     borderRadius: BorderRadius.md,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: Spacing.xs,
   },
 
   quickActionTitle: {
-    fontSize: Typography.sizes.xs,
+    fontSize: Typography.sizes.sm,
     fontWeight: Typography.weights.medium,
-    color: Colors.text.secondary,
-    textAlign: 'center' as const,
+    color: Colors.text.primary,
+    textAlign: 'center',
   },
 
-  // Categories
-  categoriesGrid: {
-    gap: Spacing.md,
+  webContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.xxl,
   },
 
-  categoryRow: {
+  webMessage: {
+    fontSize: Typography.sizes.xl,
+    textAlign: 'center',
+    color: Colors.text.primary,
+  },
+  todaysOutfitPreview: {
+    width: '100%',
+    alignItems: 'center' as const,
+  },
+
+  todaysOutfitItems: {
     flexDirection: 'row' as const,
-    gap: Spacing.md,
+    gap: Spacing.xs,
+    marginBottom: Spacing.md,
+    alignItems: 'center' as const,
   },
 
-  categoryCard: {
-    width: (width - 48) / 2,
-    height: 140,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    justifyContent: 'space-between' as const,
+  todaysOutfitItemCard: {
+    width: 80,
+    height: 106,
+    borderRadius: BorderRadius.md,
+    overflow: 'hidden' as const,
+    backgroundColor: Colors.neutral[100],
     ...Shadows.sm,
-    borderWidth: 1,
-    borderColor: Colors.border.light,
   },
 
-  categoryContent: {
+  todaysOutfitImage: {
     flex: 1,
   },
 
-  categoryTitle: {
-    fontSize: Typography.sizes.lg,
-    fontWeight: Typography.weights.semibold,
-    color: Colors.text.primary,
-    marginBottom: 4,
-  },
-
-  categorySubtitle: {
-    fontSize: Typography.sizes.sm,
-    color: Colors.text.secondary,
-  },
-
-  categoryEmoji: {
-    fontSize: 28,
-    alignSelf: 'flex-end' as const,
-  },
-
-  // Recent Items
-  recentItemsContainer: {
-    gap: Spacing.sm,
-    paddingRight: Spacing.md,
-  },
-
-  recentItemCard: {
-    alignItems: 'center' as const,
-  },
-
-  recentItemPlaceholder: {
+  moreItemsBadge: {
     width: 80,
-    height: 100,
-    backgroundColor: Colors.neutral[100],
+    height: 106,
     borderRadius: BorderRadius.md,
-    alignItems: 'center' as const,
+    backgroundColor: Colors.primary[100],
     justifyContent: 'center' as const,
-    borderWidth: 1,
-    borderColor: Colors.border.light,
+    alignItems: 'center' as const,
+  },
+
+  moreItemsText: {
+    fontSize: Typography.sizes.lg,
+    fontWeight: Typography.weights.bold as '700',
+    color: Colors.primary[600],
+  },
+
+  todaysOutfitOccasion: {
+    fontSize: Typography.sizes.md,
+    fontWeight: Typography.weights.semibold as '600',
+    color: Colors.text.primary,
     marginBottom: Spacing.xs,
   },
 
-  recentItemName: {
-    fontSize: Typography.sizes.xs,
+  todaysOutfitReasoning: {
+    fontSize: Typography.sizes.sm,
     color: Colors.text.secondary,
-    fontWeight: Typography.weights.medium,
+    textAlign: 'center' as const,
+    lineHeight: Typography.lineHeights.relaxed * Typography.sizes.sm,
+    marginBottom: Spacing.md,
   },
-};
+
+  viewOutfitButton: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 4,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+
+  viewOutfitButtonText: {
+    fontSize: Typography.sizes.sm,
+    fontWeight: Typography.weights.semibold as '600',
+    color: Colors.primary[500],
+  },
+});

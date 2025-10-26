@@ -33,3 +33,24 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+
+
+# Python backend
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+backend/wardrobe.db
+
+# Backend uploads (user data)
+backend/uploads/
+
+# VS Code settings
+.vscode/

@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImageManipulator from 'expo-image-manipulator';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy'; 
 import DatabaseService from './DatabaseService';
 
 // ✅ FIX: Define ClothingItemData interface locally or import it
@@ -71,8 +71,21 @@ export const compressImage = async (
 
     console.log('🗜️ Compressing image...', { saveLocally, maxWidth, quality });
 
+    // ✅ Handle base64 data URLs from backend
+    let imageUri = uri;
+    if (uri.startsWith('data:image')) {
+      // Save base64 to temp file first
+      const base64Data = uri.split(',')[1];
+      const tempUri = `${FileSystem.cacheDirectory}temp_${Date.now()}.jpg`;
+      await FileSystem.writeAsStringAsync(tempUri, base64Data, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      imageUri = tempUri;
+      console.log('✅ Converted base64 to temp file:', tempUri);
+    }
+
     const manipulatedImage = await ImageManipulator.manipulateAsync(
-      uri,
+      imageUri,
       [{ resize: { width: maxWidth } }],
       {
         compress: quality,
@@ -83,19 +96,23 @@ export const compressImage = async (
 
     if (saveLocally) {
       const documentsDir = FileSystem.documentDirectory;
+
+      
       if (!documentsDir) {
         throw new Error('Document directory not available');
       }
 
       const filename = `compressed_${Date.now()}.${format}`;
-      const imageDir = documentsDir + 'almari_images/';
+      const imageDir = `${documentsDir}/almari_images/`;
       
-      const dirInfo = await FileSystem.getInfoAsync(imageDir);
-      if (!dirInfo.exists) {
+      try {
         await FileSystem.makeDirectoryAsync(imageDir, { intermediates: true });
+      } catch (error) {
+        console.log('Directory already exists or created');
       }
 
       const localUri = imageDir + filename;
+      
       await FileSystem.copyAsync({
         from: manipulatedImage.uri,
         to: localUri,
@@ -117,20 +134,33 @@ export const compressImage = async (
 };
 
 // ✅ Get current user helper
+// ✅ Updated getCurrentUser with debug logs
 const getCurrentUser = async (): Promise<{ id: number }> => {
   const deviceId = globalThis.deviceId;
+  
+  console.log('🔍 getCurrentUser - deviceId:', deviceId);
+  
+  if (!deviceId) {
+    console.error('❌ deviceId is not set!');
+    throw new Error('Device ID not initialized');
+  }
+  
   let user = await DatabaseService.getUserByDeviceId(deviceId);
+  console.log('🔍 getCurrentUser - found user:', user);
   
   if (!user) {
+    console.log('🆕 Creating new user for deviceId:', deviceId);
     const userId = await DatabaseService.createUser({
-      username: `User_${deviceId.split('_')[1]}`,
+      username: `User_${deviceId.split('_')[1] || Date.now()}`,
       device_id: deviceId,
     });
     user = { id: userId };
+    console.log('✅ Created new user with ID:', userId);
   }
   
   return user;
 };
+
 
 // ✅ FIX: Updated saveWardrobeItem with proper types
 export const saveWardrobeItem = async (
@@ -142,7 +172,7 @@ export const saveWardrobeItem = async (
   } = {}
 ): Promise<boolean> => {
   try {
-    const { useLocalStorage = false, compressImage: shouldCompress = true, maxImageWidth = 800 } = options;
+    const { useLocalStorage = true, compressImage: shouldCompress = true, maxImageWidth = 800 } = options;
 
     let processedItem = { ...item };
 
@@ -218,13 +248,16 @@ export const getStoredWardrobeItems = async (
   } = {}
 ): Promise<StoredWardrobeItem[]> => {
   try {
-    const { includeSQLite = true, includeAsyncStorage = true } = options;
+    const { includeSQLite = true, includeAsyncStorage = false } = options;
     let allItems: StoredWardrobeItem[] = [];
 
     if (includeSQLite) {
       try {
         const user = await getCurrentUser();
+        console.log('🔍 Current user for loading:', user);  // ✅ ADD THIS
+        
         const sqliteItems = await DatabaseService.getUserClothing(user.id);
+        console.log('🔍 Raw SQLite items:', sqliteItems);  // ✅ ADD THIS
         
         const convertedItems: StoredWardrobeItem[] = sqliteItems.map(item => ({
           id: item.id.toString(),

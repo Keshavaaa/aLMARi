@@ -9,7 +9,10 @@ import {
   ActivityIndicator,
   RefreshControl,
   Dimensions,
+  TextInput,
+  Image,
 } from 'react-native';
+
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import Modal from 'react-native-modal';
@@ -30,6 +33,9 @@ import {
   CheckCircle,
   X,
 } from 'lucide-react-native';
+// Add calendar service import
+import calendarService, { ScheduledOutfit } from '../../services/CalendarService';
+import { OutfitCalendar } from '../../components/OutfitCalendar';
 
 // Types and Services
 import {
@@ -80,6 +86,11 @@ export default function OutfitScreen() {
   const [scheduledOutfits, setScheduledOutfits] = useState<
     OutfitCalendarEntry[]
   >([]);
+  const [calendarScheduledOutfits, setCalendarScheduledOutfits] = useState<
+    ScheduledOutfit[]
+  >([]);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string>('');
+
   // Modal state
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [selectedOutfit, setSelectedOutfit] =
@@ -93,7 +104,6 @@ export default function OutfitScreen() {
     description: 'Clear sky',
     location: 'Your Location',
   });
-
 
   useEffect(() => {
     loadInitialData();
@@ -110,8 +120,6 @@ export default function OutfitScreen() {
       const items = await getWardrobeItems();
       const availableItems = items.filter((item) => !item.inLaundry);
       setWardrobeItems(availableItems);
-
-     
 
       // Load today's outfit if exists
       await loadTodayOutfit();
@@ -140,9 +148,9 @@ export default function OutfitScreen() {
    * Load today's outfit recommendation
    */
   const loadTodayOutfit = async () => {
-    // TODO: Load from local storage or API
+    
     const today = new Date().toDateString();
-    // For now, we'll set it as empty - will be populated when user generates
+    
     setTodayOutfit({
       hasRecommendation: false,
       weather: weather,
@@ -153,7 +161,7 @@ export default function OutfitScreen() {
    * Load saved outfit combinations
    */
   const loadSavedOutfits = async () => {
-    // TODO: Load from local storage
+  
     setSavedOutfits([]);
   };
 
@@ -161,8 +169,29 @@ export default function OutfitScreen() {
    * Load scheduled outfits from calendar
    */
   const loadScheduledOutfits = async () => {
-    // TODO: Load from local storage
-    setScheduledOutfits([]);
+    try {
+      // Load from calendar service
+      const scheduled = await calendarService.getScheduledOutfits();
+      setCalendarScheduledOutfits(scheduled);
+
+      // Convert to OutfitCalendarEntry format for compatibility
+      const entries: OutfitCalendarEntry[] = scheduled.map(
+        (s : ScheduledOutfit) => ({
+          id: s.id,
+          date: s.date,
+          outfitId: s.outfitRecommendation.id,
+          occasion: s.occasion,
+          notes: s.notes,
+          reminder: s.reminder,
+          createdAt: s.createdAt,
+          updatedAt: s.updatedAt,
+        }),
+      );
+      setScheduledOutfits(entries);
+    } catch (error) {
+      console.error('Failed to load scheduled outfits:', error);
+      setScheduledOutfits([]);
+    }
   };
 
   /**
@@ -180,8 +209,6 @@ export default function OutfitScreen() {
         return;
       }
 
-      // TODO: Implement actual Gemini API call
-      // For now, generate smart combinations based on rules
       const newRecommendations = await generateSmartOutfitCombinations(
         availableItems,
         weather,
@@ -191,7 +218,13 @@ export default function OutfitScreen() {
           avoidedMaterials: [],
           stylePreference: 'classic',
           formalityPreference: ['casual'],
-          seasonalPreferences: { Spring: [], Summer: [], Fall: [], Winter: [] },
+          seasonalPreferences: {
+            spring: [],
+            summer: [],
+            fall: [],
+            winter: [],
+            'all-season': [],
+          },
           preferredFit: 'fitted',
         },
       );
@@ -422,25 +455,34 @@ export default function OutfitScreen() {
   /**
    * Handle outfit scheduling
    */
-  const handleScheduleOutfit = (outfit: OutfitRecommendation, date: string) => {
-    // TODO: Save to local storage or API
-    const newEntry: OutfitCalendarEntry = {
-      id: `scheduled-${Date.now()}`,
-      date,
-      outfitId: outfit.id,
-      occasion: outfit.occasion,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+  const handleScheduleOutfit = async (
+    outfit: OutfitRecommendation,
+    date: string,
+    notes?: string,
+  ) => {
+    try {
+      // Save using calendar service
+      const scheduled = await calendarService.scheduleOutfit(
+        date,
+        outfit,
+        outfit.occasion,
+        notes,
+      );
 
-    setScheduledOutfits((prev) => [...prev, newEntry]);
-    setShowScheduleModal(false);
-    setSelectedOutfit(null);
+      // Reload scheduled outfits
+      await loadScheduledOutfits();
 
-    Alert.alert(
-      'Outfit Scheduled! 📅',
-      `Your outfit has been scheduled for ${new Date(date).toLocaleDateString()}`,
-    );
+      setShowScheduleModal(false);
+      setSelectedOutfit(null);
+
+      Alert.alert(
+        'Outfit Scheduled! 📅',
+        `Your outfit has been scheduled for ${new Date(date).toLocaleDateString()}`,
+      );
+    } catch (error) {
+      console.error('Failed to schedule outfit:', error);
+      Alert.alert('Error', 'Failed to schedule outfit. Please try again.');
+    }
   };
 
   /**
@@ -524,10 +566,17 @@ export default function OutfitScreen() {
         {activeTab === 'calendar' && (
           <CalendarTab
             scheduledOutfits={scheduledOutfits}
-            onRemoveScheduled={(entryId) => {
-              setScheduledOutfits((prev) =>
-                prev.filter((entry) => entry.id !== entryId),
-              );
+            calendarScheduledOutfits={calendarScheduledOutfits}
+            selectedCalendarDate={selectedCalendarDate}
+            onDateSelect={(date) => setSelectedCalendarDate(date)}
+            onRemoveScheduled={async (entryId) => {
+              try {
+                await calendarService.deleteScheduledOutfit(entryId);
+                await loadScheduledOutfits();
+                Alert.alert('Success', 'Scheduled outfit removed');
+              } catch (error) {
+                Alert.alert('Error', 'Failed to remove outfit');
+              }
             }}
           />
         )}
@@ -684,31 +733,136 @@ const TodayOutfitsTab = ({
 const CalendarTab = ({
   scheduledOutfits,
   onRemoveScheduled,
+  calendarScheduledOutfits,
+  selectedCalendarDate,
+  onDateSelect,
 }: {
   scheduledOutfits: OutfitCalendarEntry[];
   onRemoveScheduled: (entryId: string) => void;
-}) => (
-  <View style={styles.tabContent}>
-    <Text style={styles.sectionTitle}>Scheduled Outfits</Text>
-    {scheduledOutfits.length === 0 ? (
-      <View style={styles.emptySchedule}>
-        <Calendar size={48} color={Colors.neutral[300]} />
-        <Text style={styles.emptyText}>No scheduled outfits</Text>
-        <Text style={styles.emptySubtext}>
-          Schedule outfits for upcoming events and occasions
-        </Text>
-      </View>
-    ) : (
-      scheduledOutfits.map((entry) => (
-        <ScheduledOutfitCard
-          key={entry.id}
-          entry={entry}
-          onRemove={() => onRemoveScheduled(entry.id)}
+  calendarScheduledOutfits: ScheduledOutfit[];
+  selectedCalendarDate: string;
+  onDateSelect: (date: string) => void;
+}) => {
+  const selectedOutfit = calendarScheduledOutfits.find(
+    (o) => o.date === selectedCalendarDate,
+  );
+
+  return (
+    <View style={styles.tabContent}>
+      {/* Calendar Widget */}
+      <View style={styles.calendarWidget}>
+        <OutfitCalendar
+          onDateSelect={(date: string) => onDateSelect(date)}
+          selectedDate={selectedCalendarDate}
         />
-      ))
-    )}
-  </View>
-);
+      </View>
+
+      {/* Selected Date Details */}
+      {selectedCalendarDate && (
+        <View style={styles.selectedDateDetails}>
+          <Text style={styles.selectedDateTitle}>
+            {new Date(selectedCalendarDate).toLocaleDateString('en-US', {
+              weekday: 'long',
+              month: 'long',
+              day: 'numeric',
+            })}
+          </Text>
+
+          {selectedOutfit ? (
+            <View style={styles.scheduledOutfitDetails}>
+              <View style={styles.detailsHeader}>
+                <Text style={styles.detailsTitle}>
+                  {selectedOutfit.outfitRecommendation.confidence}% Match
+                </Text>
+                <TouchableOpacity
+                  onPress={() => onRemoveScheduled(selectedOutfit.id)}
+                  style={styles.deleteIconButton}
+                >
+                  <X size={IconSizes.md} color={Colors.error} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.detailsOccasion}>
+                {selectedOutfit.occasion}
+              </Text>
+              <Text style={styles.detailsReasoning}>
+                {selectedOutfit.outfitRecommendation.reasoning}
+              </Text>
+
+              {/* ✅ NEW: Visual outfit cards with images */}
+              <View style={styles.scheduledOutfitPreview}>
+                {selectedOutfit.outfitRecommendation.items.map(
+                  (item: ClothingItem, index: number) => (
+                    <View
+                      key={`detail-${index}`}
+                      style={styles.scheduledOutfitItemCard}
+                    >
+                      <Image
+                        source={{ uri: item.imageUri }}
+                        style={styles.scheduledOutfitItemImage}
+                        resizeMode="cover"
+                      />
+                      <View style={styles.scheduledOutfitItemOverlay}>
+                        <Text
+                          style={styles.scheduledOutfitItemLabel}
+                          numberOfLines={1}
+                        >
+                          {item.name}
+                        </Text>
+                        <Text style={styles.scheduledOutfitItemCategory}>
+                          {item.category}
+                        </Text>
+                      </View>
+                    </View>
+                  ),
+                )}
+              </View>
+
+              {selectedOutfit.notes && (
+                <View style={styles.notesContainer}>
+                  <Text style={styles.notesLabel}>Notes:</Text>
+                  <Text style={styles.notesText}>{selectedOutfit.notes}</Text>
+                </View>
+              )}
+            </View>
+          ) : (
+            <View style={styles.noOutfitSelected}>
+              <Text style={styles.noOutfitText}>
+                No outfit scheduled for this date
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Upcoming Scheduled Outfits List */}
+      <Text style={styles.sectionTitle}>All Scheduled Outfits</Text>
+      {scheduledOutfits.length === 0 ? (
+        <View style={styles.emptySchedule}>
+          <Calendar size={48} color={Colors.neutral[300]} />
+          <Text style={styles.emptyText}>No scheduled outfits</Text>
+          <Text style={styles.emptySubtext}>
+            Schedule outfits for upcoming events and occasions
+          </Text>
+        </View>
+      ) : (
+        scheduledOutfits.map((entry) => {
+          const outfit = calendarScheduledOutfits.find(
+            (o) => o.id === entry.id,
+          );
+          return (
+            <ScheduledOutfitCard
+              key={entry.id}
+              entry={entry}
+              scheduledOutfit={outfit}
+              onRemove={() => onRemoveScheduled(entry.id)}
+            />
+          );
+        })
+      )}
+    </View>
+  );
+};
 
 const SavedOutfitsTab = ({
   savedOutfits,
@@ -759,6 +913,7 @@ const OutfitCard = ({
   onRemove?: () => void;
 }) => (
   <View style={[styles.outfitCard, featured && styles.featuredCard]}>
+    {/* Header */}
     <View style={styles.outfitHeader}>
       <View>
         <Text style={[styles.outfitTitle, featured && styles.featuredTitle]}>
@@ -771,16 +926,29 @@ const OutfitCard = ({
       </View>
     </View>
 
-    <Text style={styles.outfitReasoning}>{outfit.reasoning}</Text>
-
-    <View style={styles.itemsList}>
+    {/* ✅ NEW: Visual Outfit Preview with Images */}
+    <View style={styles.outfitPreview}>
       {outfit.items.map((item, index) => (
-        <View key={`${outfit.id}-${index}`} style={styles.itemChip}>
-          <Text style={styles.itemChipText}>{item.name}</Text>
+        <View key={`${outfit.id}-${index}`} style={styles.outfitItemCard}>
+          <Image
+            source={{ uri: item.imageUri }}
+            style={styles.outfitItemImage}
+            resizeMode="cover"
+          />
+          <View style={styles.outfitItemOverlay}>
+            <Text style={styles.outfitItemLabel} numberOfLines={1}>
+              {item.name}
+            </Text>
+            <Text style={styles.outfitItemCategory}>{item.category}</Text>
+          </View>
         </View>
       ))}
     </View>
 
+    {/* Reasoning */}
+    <Text style={styles.outfitReasoning}>{outfit.reasoning}</Text>
+
+    {/* Actions */}
     <View style={styles.outfitActions}>
       <TouchableOpacity style={styles.actionButton} onPress={onSchedule}>
         <Calendar size={16} color={Colors.primary[500]} />
@@ -806,18 +974,30 @@ const OutfitCard = ({
 
 const ScheduledOutfitCard = ({
   entry,
+  scheduledOutfit,
   onRemove,
 }: {
   entry: OutfitCalendarEntry;
+  scheduledOutfit?: ScheduledOutfit;
   onRemove: () => void;
 }) => (
   <View style={styles.scheduledCard}>
     <View style={styles.scheduledHeader}>
-      <View>
+      <View style={styles.scheduledDateContainer}>
         <Text style={styles.scheduledDate}>
-          {new Date(entry.date).toLocaleDateString()}
+          {new Date(entry.date).toLocaleDateString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+          })}
         </Text>
         <Text style={styles.scheduledOccasion}>{entry.occasion}</Text>
+        {scheduledOutfit && (
+          <Text style={styles.scheduledItemCount}>
+            {scheduledOutfit.outfitRecommendation.items.length} items •{' '}
+            {scheduledOutfit.outfitRecommendation.confidence}% match
+          </Text>
+        )}
       </View>
       <TouchableOpacity onPress={onRemove} style={styles.removeButton}>
         <X size={16} color={Colors.error} />
@@ -849,13 +1029,19 @@ const ScheduleModal = ({
   visible: boolean;
   outfit: OutfitRecommendation | null;
   onClose: () => void;
-  onSchedule: (outfit: OutfitRecommendation, date: string) => void;
+  onSchedule: (
+    outfit: OutfitRecommendation,
+    date: string,
+    notes?: string,
+  ) => void;
 }) => {
   const [selectedDate, setSelectedDate] = useState('');
+  const [notes, setNotes] = useState('');
 
   const handleSchedule = () => {
     if (outfit && selectedDate) {
-      onSchedule(outfit, selectedDate);
+      onSchedule(outfit, selectedDate, notes);
+      setNotes(''); // Reset notes after scheduling
     }
   };
 
@@ -901,6 +1087,20 @@ const ScheduleModal = ({
                 </Text>
               </TouchableOpacity>
             </View>
+            {/* Notes Input */}
+            <View style={styles.notesInputSection}>
+              <Text style={styles.dateLabel}>Notes (optional):</Text>
+              <TextInput
+                style={styles.notesInput}
+                placeholder="Add notes for this outfit..."
+                placeholderTextColor={Colors.neutral[400]}
+                value={notes}
+                onChangeText={setNotes}
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+              />
+            </View>
 
             <TouchableOpacity
               style={[
@@ -923,6 +1123,50 @@ const styles = {
   container: {
     flex: 1,
     backgroundColor: Colors.background.secondary,
+  },
+  // Add after outfitCard styles
+  outfitPreview: {
+    flexDirection: 'row' as const,
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+    flexWrap: 'wrap' as const,
+  },
+
+  outfitItemCard: {
+    flex: 1,
+    minWidth: 100,
+    maxWidth: 150,
+    aspectRatio: 0.75, // Portrait orientation
+    borderRadius: BorderRadius.md,
+    overflow: 'hidden' as const,
+    position: 'relative' as const,
+    backgroundColor: Colors.neutral[100],
+  },
+
+  outfitItemImage: {
+    flex: 1,
+},
+
+
+  outfitItemOverlay: {
+    position: 'absolute' as const,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    padding: Spacing.xs,
+  },
+
+  outfitItemLabel: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.semibold,
+    color: Colors.text.inverse,
+    marginBottom: 2,
+  },
+
+  outfitItemCategory: {
+    fontSize: Typography.sizes.xs,
+    color: 'rgba(255, 255, 255, 0.8)',
   },
 
   // Header
@@ -1334,5 +1578,184 @@ const styles = {
     fontSize: Typography.sizes.md,
     fontWeight: Typography.weights.semibold,
     color: Colors.text.inverse,
+  },
+  calendarWidget: {
+    marginBottom: Spacing.lg,
+    ...Shadows.sm,
+  },
+
+  selectedDateDetails: {
+    marginBottom: Spacing.lg,
+  },
+
+  selectedDateTitle: {
+    fontSize: Typography.sizes.md,
+    fontWeight: Typography.weights.semibold,
+    color: Colors.text.primary,
+    marginBottom: Spacing.sm,
+  },
+
+  scheduledOutfitDetails: {
+    backgroundColor: Colors.background.primary,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    ...Shadows.sm,
+  },
+
+  detailsHeader: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'flex-start' as const,
+    marginBottom: Spacing.xs,
+  },
+
+  detailsTitle: {
+    fontSize: Typography.sizes.md,
+    fontWeight: Typography.weights.semibold,
+    color: Colors.text.primary,
+  },
+
+  deleteIconButton: {
+    padding: Spacing.xs,
+  },
+
+  detailsOccasion: {
+    fontSize: Typography.sizes.sm,
+    color: Colors.text.secondary,
+    marginBottom: Spacing.sm,
+  },
+
+  detailsReasoning: {
+    fontSize: Typography.sizes.sm,
+    color: Colors.text.secondary,
+    marginBottom: Spacing.md,
+    lineHeight: Typography.lineHeights.relaxed * Typography.sizes.sm,
+  },
+
+  detailsItemsList: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: Spacing.sm,
+  },
+
+  detailsItemChip: {
+    backgroundColor: Colors.primary[50],
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.primary[100],
+  },
+
+  detailsItemName: {
+    fontSize: Typography.sizes.sm,
+    fontWeight: Typography.weights.medium,
+    color: Colors.primary[700],
+  },
+
+  detailsItemCategory: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.primary[600],
+    marginTop: 2,
+  },
+
+  notesContainer: {
+    backgroundColor: Colors.neutral[50],
+    padding: Spacing.md,
+    borderRadius: BorderRadius.sm,
+    marginTop: Spacing.md,
+  },
+
+  notesLabel: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.semibold,
+    color: Colors.text.secondary,
+    marginBottom: 4,
+  },
+
+  notesText: {
+    fontSize: Typography.sizes.sm,
+    color: Colors.text.primary,
+    lineHeight: Typography.lineHeights.relaxed * Typography.sizes.sm,
+  },
+
+  noOutfitSelected: {
+    backgroundColor: Colors.background.primary,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.lg,
+    alignItems: 'center' as const,
+  },
+
+  noOutfitText: {
+    fontSize: Typography.sizes.sm,
+    color: Colors.text.secondary,
+  },
+
+  scheduledDateContainer: {
+    flex: 1,
+  },
+
+  scheduledItemCount: {
+    fontSize: Typography.sizes.xs,
+    color: Colors.text.tertiary,
+    marginTop: 4,
+  },
+
+  notesInputSection: {
+    marginTop: Spacing.md,
+  },
+
+  notesInput: {
+    backgroundColor: Colors.neutral[50],
+    borderWidth: 1,
+    borderColor: Colors.border.light,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    fontSize: Typography.sizes.md,
+    color: Colors.text.primary,
+    minHeight: 80,
+  },
+
+    // Add after the existing calendar/scheduled styles
+  scheduledOutfitPreview: {
+    flexDirection: 'row' as const,
+    gap: Spacing.sm,
+    marginVertical: Spacing.md,
+    flexWrap: 'wrap' as const,
+  },
+
+  scheduledOutfitItemCard: {
+    width: 100,
+    height: 133, // 3:4 aspect ratio
+    borderRadius: BorderRadius.md,
+    overflow: 'hidden' as const,
+    position: 'relative' as const,
+    backgroundColor: Colors.neutral[100],
+    ...Shadows.sm,
+  },
+
+  scheduledOutfitItemImage: {
+     flex: 1,
+},
+
+  scheduledOutfitItemOverlay: {
+    position: 'absolute' as const,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    padding: Spacing.xs,
+  },
+
+  scheduledOutfitItemLabel: {
+    fontSize: Typography.sizes.xs,
+    fontWeight: Typography.weights.semibold as '600',
+    color: Colors.text.inverse,
+    marginBottom: 2,
+  },
+
+  scheduledOutfitItemCategory: {
+    fontSize: Typography.sizes.xs, // Changed from xxs to xs
+    color: 'rgba(255, 255, 255, 0.8)',
   },
 };

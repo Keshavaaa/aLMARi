@@ -53,50 +53,6 @@ const PREFERENCES_STORAGE_KEY = 'user_preferences_v1';
 const IMAGES_DIRECTORY = 'almari_images/';
 const MAX_IMAGE_SIZE = 2 * 1024 * 1024; // 2MB
 const IMAGE_QUALITY = 0.8;
-
-// Mock items for development and demo
-const MOCK_ITEMS: WardrobeItem[] = [
-  {
-    id: 'mock_1',
-    name: 'Blue Cotton Shirt',
-    category: 'Tops',
-    colors: ['Blue'],
-    image: 'https://placehold.co/300x400/4A90E2/ffffff?text=Blue+Shirt',
-    description: 'Casual cotton shirt with collar, light blue color, comfortable fit',
-    brand: 'Zara',
-    size: 'M',
-    inLaundry: false,
-    notes: 'Perfect for office meetings',
-    dateAdded: new Date().toISOString(),
-  },
-  {
-    id: 'mock_2',
-    name: 'Black Jeans',
-    category: 'Bottoms',
-    colors: ['Black'],
-    image: 'https://placehold.co/300x400/2C2C2C/ffffff?text=Black+Jeans',
-    description: 'Slim fit black denim jeans, comfortable and versatile',
-    brand: 'Levi\'s',
-    size: '32',
-    inLaundry: true,
-    notes: 'Need washing before weekend',
-    dateAdded: new Date(Date.now() - 86400000).toISOString(),
-  },
-  {
-    id: 'mock_3',
-    name: 'White Sneakers',
-    category: 'Shoes',
-    colors: ['White'],
-    image: 'https://placehold.co/300x400/F8F8F8/333333?text=White+Sneakers',
-    description: 'Clean white sneakers, perfect for casual outfits',
-    brand: 'Nike',
-    size: '9',
-    inLaundry: false,
-    notes: 'Great for walking',
-    dateAdded: new Date(Date.now() - 172800000).toISOString(),
-  }
-];
-
 /**
  * Comprehensive Wardrobe Service
  * Handles all wardrobe management functionality with proper error handling
@@ -296,34 +252,50 @@ class WardrobeService {
   /**
    * Get or create current user
    */
-  async getCurrentUser(): Promise<ApiResponse<{ id: number }>> {
-    try {
-      // For now, use a simple device-based user system
-      const deviceId = 'device_' + Math.random().toString(36).substr(2, 9);
-      let user = await DatabaseService.getUserByDeviceId(deviceId);
-      
-      if (!user) {
-        const userId = await DatabaseService.createUser({
-          username: `User_${Date.now()}`,
-          device_id: deviceId,
-        });
-        user = { id: userId };
-      }
-      
-      return { success: true, data: user };
-
-    } catch (error) {
-      return {
-        success: false,
-        error: {
-          code: 'USER_ERROR',
-          message: error instanceof Error ? error.message : 'Failed to get current user',
-          timestamp: new Date().toISOString(),
-          details: error,
-        }
-      };
+  /**
+ * Get or create current user
+ */
+async getCurrentUser(): Promise<ApiResponse<{ id: number }>> {
+  try {
+    // ✅ Use global device ID from app initialization
+    const deviceId = globalThis.deviceId;
+    
+    if (!deviceId) {
+      console.error('❌ No device ID found in global scope');
+      throw new Error('Device ID not initialized');
     }
+
+    console.log('🔍 Getting user for device:', deviceId);
+    
+    let user = await DatabaseService.getUserByDeviceId(deviceId);
+    
+    if (!user) {
+      console.log('🆕 Creating new user for device:', deviceId);
+      const userId = await DatabaseService.createUser({
+        username: `User_${Date.now()}`,
+        device_id: deviceId,
+      });
+      user = { id: userId };
+      console.log('✅ Created user with ID:', userId);
+    } else {
+      console.log('✅ Found existing user with ID:', user.id);
+    }
+    
+    return { success: true, data: user };
+
+  } catch (error) {
+    console.error('❌ getCurrentUser failed:', error);
+    return {
+      success: false,
+      error: {
+        code: 'USER_ERROR',
+        message: error instanceof Error ? error.message : 'Failed to get current user',
+        timestamp: new Date().toISOString(),
+        details: error,
+      }
+    };
   }
+}
 
   /**
    * Convert legacy WardrobeItem to ClothingItem
@@ -344,7 +316,7 @@ class WardrobeService {
       dateAdded: wardrobeItem.dateAdded,
       timesWorn: 0,
       tags: [],
-      seasonality: ['Summer'] as Season[],
+      seasonality: ['summer'] as Season[],
       formality: 'casual' as FormalityLevel,
       isFavorite: false,
     };
@@ -382,7 +354,7 @@ class WardrobeService {
             timesWorn: 0, // TODO: Implement wear tracking
             tags: [],
             seasonality: item.season_suitability ? 
-              [item.season_suitability as Season] : ['Summer'],
+              [item.season_suitability as Season] : ['summer'],
             formality: (item.style_category?.toLowerCase() as FormalityLevel) || 'casual',
             material: item.fabric_type,
             isFavorite: false, // TODO: Implement favorites
@@ -407,7 +379,7 @@ class WardrobeService {
       }
 
       // 3. Add mock items for demo purposes
-      const convertedMockItems = MOCK_ITEMS.map(this.convertToClothingItem);
+      const convertedMockItems = [].map(this.convertToClothingItem);
       items.push(...convertedMockItems);
 
       // 4. Remove duplicates based on ID
@@ -425,58 +397,78 @@ class WardrobeService {
     } catch (error) {
       console.error('Failed to load wardrobe items:', error);
       // Return mock items as fallback
-      return MOCK_ITEMS.map(this.convertToClothingItem);
+      return [].map(this.convertToClothingItem);
     }
   }
 
   /**
-   * Save clothing item with comprehensive error handling
-   */
-  async saveClothingItem(itemData: Omit<ClothingItem, 'id' | 'dateAdded'>): Promise<ApiResponse<ClothingItem>> {
-    try {
-      const newItem: ClothingItem = {
-        ...itemData,
-        id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        dateAdded: new Date().toISOString(),
-      };
+ * Save clothing item with comprehensive error handling
+ */
+async saveClothingItem(itemData: Omit<ClothingItem, 'id' | 'dateAdded'>): Promise<ApiResponse<ClothingItem>> {
+  try {
+    console.log('💾 Saving clothing item to database...');
+    
+    // ✅ Get current user
+    const userResult = await this.getCurrentUser();
+    if (!userResult.success || !userResult.data) {
+      throw new Error('Failed to get current user');
+    }
 
-      // Save to AsyncStorage for immediate availability
-      const existingItems = await AsyncStorage.getItem(WARDROBE_STORAGE_KEY);
-      const items = existingItems ? JSON.parse(existingItems) : [];
-      
-      // Convert to legacy format for storage
-      const legacyItem: WardrobeItem = {
-        id: newItem.id,
+    const newItem: ClothingItem = {
+      ...itemData,
+      id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      dateAdded: new Date().toISOString(),
+    };
+
+    // ✅ Save to SQLite database (main storage)
+    try {
+      const clothingData = {
+        user_id: userResult.data.id,
         name: newItem.name,
-        category: newItem.category,
-        colors: [newItem.color],
-        image: newItem.imageUri,
-        description: newItem.description,
+        image_uri: newItem.imageUri, // ✅ This should already be a file path from ImageProcessingService
+        clothing_type: newItem.category,
+        primary_color: newItem.color,
+        secondary_color: undefined,
+        fabric_type: newItem.material,
+        style_category: newItem.subcategory,
+        season_suitability: newItem.seasonality[0],
         brand: newItem.brand,
         size: newItem.size,
-        inLaundry: newItem.inLaundry,
-        notes: newItem.notes,
-        dateAdded: newItem.dateAdded,
+        ai_analysis: JSON.stringify({
+          description: newItem.description,
+          formality: newItem.formality,
+        })
       };
 
-      items.push(legacyItem);
-      await AsyncStorage.setItem(WARDROBE_STORAGE_KEY, JSON.stringify(items));
-
-      console.log('✅ Item saved to wardrobe:', newItem.name);
-      return { success: true, data: newItem };
-
-    } catch (error) {
-      return {
-        success: false,
-        error: {
-          code: 'SAVE_ERROR',
-          message: error instanceof Error ? error.message : 'Failed to save clothing item',
-          timestamp: new Date().toISOString(),
-          details: error,
-        }
-      };
+      console.log('📤 Saving to database:', clothingData);
+      
+      const clothingId = await DatabaseService.addClothingItem(clothingData);
+      if (clothingId) {
+        newItem.id = clothingId.toString();
+        console.log('✅ Saved to database with ID:', clothingId);
+      }
+    } catch (dbError) {
+      console.error('❌ Database save failed:', dbError);
+      throw dbError; // Re-throw to trigger the catch block
     }
+
+    console.log('✅ Item saved successfully:', newItem.name);
+    return { success: true, data: newItem };
+
+  } catch (error) {
+    console.error('❌ Save failed:', error);
+    return {
+      success: false,
+      error: {
+        code: 'SAVE_ERROR',
+        message: error instanceof Error ? error.message : 'Failed to save clothing item',
+        timestamp: new Date().toISOString(),
+        details: error,
+      }
+    };
   }
+}
+
 
   /**
    * Save clothing with image processing and AI analysis
@@ -531,7 +523,7 @@ class WardrobeService {
           description: `${manualData.clothing_type || 'clothing'} in ${manualData.primary_color || 'unknown'} color`
         };
       } else {
-        console.log('🤖 Using AI analysis from Gemini');
+        console.log('Using AI analysis from Gemini');
         analysisData = processedData.aiAnalysis || {
           clothing_type: 'clothing',
           primary_color: 'unknown',
@@ -559,7 +551,7 @@ class WardrobeService {
         timesWorn: 0,
         tags: [],
         seasonality: analysisData.season_suitability ? 
-          [analysisData.season_suitability as Season] : ['Summer'],
+          [analysisData.season_suitability as Season] : ['summer'],
         formality: (analysisData.style_category?.toLowerCase() as FormalityLevel) || 'casual',
         material: analysisData.fabric_type,
         isFavorite: false,
@@ -808,7 +800,7 @@ export const saveToWardrobe = (item: Omit<WardrobeItem, 'id' | 'dateAdded'>) => 
     notes: item.notes || '',
     timesWorn: 0,
     tags: [],
-    seasonality: ['Summer'],
+    seasonality: ['summer'],
     formality: 'casual',
     isFavorite: false,
   };
