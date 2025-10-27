@@ -1,25 +1,23 @@
-// constants/Design.ts
 export const Colors = {
   // Primary Brand Colors - Consistent purple theme for aLMARi
   primary: {
     50: '#F5F3FF',   // Very light purple background
-    100: '#EDE9FE',  // Light purple for cards/sections
+    100: '#EDE9FE',  // Light purple for cards
     200: '#DDD6FE',  // Lighter purple for borders
     300: '#C4B5FD',  // Medium light purple
     400: '#A78BFA',  // Medium purple
-    500: '#8C00FF',  // Main brand purple (your primary)
+    500: '#8C00FF',  // Main brand purple
     600: '#7C3AED',  // Darker purple for hover states
     700: '#6D28D9',  // Dark purple for active states
     800: '#5B21B6',  // Very dark purple
     900: '#4C1D95'   // Darkest purple for text
   },
   
-  // Magenta accent (left side of gradient)
   accent: {
     500: '#CD01FE',  // Vibrant magenta
     600: '#9800F7',  // Purple-magenta
   },
-  // Secondary Brand Color - Tropical Wood Brown (keeping this)
+  
   secondary: {
     50: '#FAF7F5',
     100: '#F5EFE9',
@@ -35,7 +33,7 @@ export const Colors = {
 
   // Neutral Grays - Professional and clean
   neutral: {
-    50: '#FAFAFA',   // Almost white background
+    50: '#FAFAFA',   // white background
     100: '#F5F5F5',  // Light gray background
     200: '#E5E5E5',  // Border gray
     300: '#D4D4D4',  // Light text gray
@@ -67,7 +65,7 @@ export const Colors = {
     secondary: '#525252',  // Secondary text
     tertiary: '#A3A3A3',   // Subtle text
     inverse: '#FFFFFF',    // White text on dark backgrounds
-    brand: '#8C00FF',      // ✅ Electric purple
+    brand: '#8C00FF',      // Electric purple
     accent: '#603B2A',     // Brown accent
   },
 
@@ -107,8 +105,8 @@ export const Typography = {
     fontFamily: 'System',
     fontSize: 32,
     fontWeight: '300' as const,
-    primaryColor: '#8C00FF',    // ✅ Electric purple for 'a' and 'i'
-    secondaryColor: '#603B2A',  // Brown for 'LMAR'
+    primaryColor: '#8C00FF',    
+    secondaryColor: '#603B2A', 
     letterSpacing: 1.2,
   },
   
@@ -241,7 +239,7 @@ export const Layout = {
   }
 };
 
-// Professional icon sizes
+
 export const IconSizes = {
   xs: 12,
   sm: 16,

@@ -67,14 +67,12 @@ export default function ItemDetailsScreen() {
 
     try {
       if (isNewItem && params.imageUri) {
-        // ✅ NEW ITEM from camera - Use AI suggestions
         const suggestedName = (params.suggestedName as string) || '';
         const suggestedCategory = (params.suggestedCategory as string) || '';
         const suggestedColor = (params.suggestedColor as string) || '';
         const suggestedDescription =
           (params.suggestedDescription as string) || '';
 
-        // ✅ Parse dominantColors safely
         const dominantColors = params.dominantColors
           ? (params.dominantColors as string).split(',').filter(Boolean)
           : [];
@@ -108,7 +106,6 @@ export default function ItemDetailsScreen() {
           );
         }
       } else if (!isNewItem && params.imageUri) {
-        // ✅ EXISTING ITEM from wardrobe - Use direct params
         console.log('📂 Loading existing item from wardrobe');
 
         setItem({
@@ -153,7 +150,7 @@ export default function ItemDetailsScreen() {
     try {
       console.log('💾 Saving item:', item);
 
-      // ✅ Use direct SQLite
+      // Use direct SQLite
       const SQLite = require('expo-sqlite');
       const db = await DatabaseService.getDatabase();
 
@@ -183,7 +180,7 @@ export default function ItemDetailsScreen() {
       };
 
       if (isNewItem) {
-        // ✅ Insert new item
+        // Insert new item
         const result = await db.runAsync(
           `
         INSERT INTO clothing_items (
@@ -205,7 +202,7 @@ export default function ItemDetailsScreen() {
 
         console.log('✅ Item saved with ID:', result.lastInsertRowId);
       } else {
-        // ✅ Update existing item
+        //  Update existing item
         const itemId = params.id as string;
         await db.runAsync(
           `

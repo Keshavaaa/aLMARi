@@ -20,7 +20,6 @@ export default function BrandLogo({ size = 'medium', style }: BrandLogoProps) {
 
   const fontSize = sizes[size];
 
-  // ✅ NEW COLORS - Electric Purple & Brown
   const purpleColor = '#8C00FF'; // Electric purple for 'a' and 'i'
   const brownColor = '#6B7280'; // Tropical wood brown for 'LMAR'
 

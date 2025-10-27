@@ -49,7 +49,6 @@ import {
 } from '../../types/clothing';
 
 import { getWardrobeItems } from '../../services/WardrobeService';
-import { WeatherService } from '../../services/WeatherServices';
 // Design System
 import {
   Colors,
@@ -362,7 +361,7 @@ export default function OutfitScreen() {
     // Color coordination bonus
     const colors = items.map((item) => item.color);
     const uniqueColors = new Set(colors);
-    if (uniqueColors.size <= 3) score += 0.2; // Good color coordination
+    if (uniqueColors.size <= 3) score += 0.2; 
 
     // Weather appropriateness
     if (weather.temperature > 25) {

@@ -1,4 +1,3 @@
-// components/TestGeminiAPI.tsx
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import { testAIConnection } from '../services/ImageProcessingService';

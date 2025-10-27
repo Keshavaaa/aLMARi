@@ -376,7 +376,7 @@ export default function CameraScreen() {
         };
       }
 
-      // ✅ Stage 3: Save processed image to filesystem BEFORE navigation
+      //  Stage 3: Save processed image to filesystem BEFORE navigation
       console.log('💾 Saving processed image to filesystem...');
 
       let finalImageUri = imageUri; // Fallback to original
@@ -404,7 +404,7 @@ export default function CameraScreen() {
         finalImageUri = imageUri; // Fallback to original
       }
 
-      // ✅ Stage 4 - Save to SQLite database (direct method)
+      // Stage 4 - Save to SQLite database (direct method)
       console.log('💾 Saving item to local SQLite database...');
 
       try {
@@ -461,10 +461,9 @@ export default function CameraScreen() {
         );
       } catch (dbError) {
         console.error('❌ Database save error:', dbError);
-        // Continue anyway - user can still see item in item-details
+        
       }
 
-      // ✅ Navigation params with FILE URI (not base64!)
       const navigationParams = {
         imageUri: finalImageUri,
         originalImageUri: imageUri,

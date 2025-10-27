@@ -3,7 +3,6 @@ import {
   Sun, 
   Cloud, 
   CloudRain, 
-  Thermometer,
   Droplets,
   Wind
 } from 'lucide-react-native';

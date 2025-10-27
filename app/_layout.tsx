@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import SplashScreen from '@/components/SplashScreen';
 import DatabaseService from '../services/DatabaseService';
-import * as Font from 'expo-font'; // ✅ ADD THIS
+import * as Font from 'expo-font';
 
 export default function RootLayout() {
   const [isReady, setIsReady] = useState(false);
@@ -22,7 +22,6 @@ export default function RootLayout() {
     try {
       console.log('🚀 Initializing aLMARi App...');
 
-      // ✅ LOAD CENTAUR FONT FIRST
       await Font.loadAsync({
         Centaur: require('../assets/fonts/centaur-regular.ttf'),
       });
@@ -71,7 +70,6 @@ export default function RootLayout() {
     }
   };
 
-  // Show splash screen while not ready OR while showSplash is true
   if (!isReady || showSplash) {
     return <SplashScreen />;
   }

@@ -1,4 +1,3 @@
-// types/clothing.ts
 export interface ClothingItem {
   id: string;
   name: string;
@@ -9,14 +8,14 @@ export interface ClothingItem {
   size: string;
   color: string;
   imageUri: string;
-  originalImageUri?: string; // Before background removal
+  originalImageUri?: string; 
   inLaundry: boolean;
   notes: string;
   dateAdded: string;
   lastWorn?: string;
   timesWorn: number;
   tags: string[];
-  embedding?: number[]; // For AI similarity matching
+  embedding?: number[]; 
   seasonality: Season[];
   formality: FormalityLevel;
   material?: string;
@@ -34,20 +33,20 @@ export interface OutfitRecommendation {
   items: ClothingItem[];
   occasion: string;
   weather: WeatherCondition;
-  confidence: number; // 0-100 confidence score
-  reasoning: string; // AI explanation for the recommendation
-  scheduledDate?: string; // For calendar planning
+  confidence: number; 
+  reasoning: string; 
+  scheduledDate?: string; 
   isScheduled: boolean;
   createdAt: string;
 }
 
 export interface WeatherCondition {
-  temperature: number; // in Celsius
+  temperature: number; 
   condition: 'sunny' | 'cloudy' | 'rainy' | 'snowy' | 'windy';
-  humidity: number; // percentage
-  windSpeed: number; // km/h
-  description?: string; // "Partly cloudy", "Light rain", etc.
-  location?: string; // City name
+  humidity: number; 
+  windSpeed: number;
+  description?: string; 
+  location?: string; 
 }
 
 export interface UserPreferences {
@@ -56,7 +55,7 @@ export interface UserPreferences {
   avoidedMaterials: string[];
   stylePreference: 'minimalist' | 'trendy' | 'classic' | 'eclectic' | 'bohemian' | 'sporty';
   formalityPreference: FormalityLevel[];
-  seasonalPreferences: Record<Season, string[]>; // Preferred categories per season
+  seasonalPreferences: Record<Season, string[]>; 
   bodyType?: BodyType;
   skinTone?: SkinTone;
   preferredFit: 'tight' | 'fitted' | 'relaxed' | 'oversized';
@@ -69,7 +68,7 @@ export type SkinTone = 'cool' | 'warm' | 'neutral';
 
 export interface OutfitCalendarEntry {
   id: string;
-  date: string; // ISO date string
+  date: string; 
   outfitId: string;
   occasion: string;
   notes?: string;
@@ -86,21 +85,20 @@ export interface WardrobeStats {
   mostWornItems: ClothingItem[];
   leastWornItems: ClothingItem[];
   recentlyAdded: ClothingItem[];
-  costPerWear: Record<string, number>; // item id -> cost per wear
+  costPerWear: Record<string, number>; 
 }
 
 export interface AIRecommendationRequest {
   occasion: string;
   weather: WeatherCondition;
   userPreferences: UserPreferences;
-  availableItems: ClothingItem[]; // Items not in laundry
-  excludeItems?: string[]; // Item IDs to exclude
-  includeItems?: string[]; // Item IDs that must be included
+  availableItems: ClothingItem[];
+  excludeItems?: string[]; 
+  includeItems?: string[]; 
 }
-
 export interface AIRecommendationResponse {
   recommendations: OutfitRecommendation[];
-  alternativeItems?: ClothingItem[]; // Suggestions for missing items
+  alternativeItems?: ClothingItem[]; 
   styleAdvice?: string[];
 }
 
@@ -131,7 +129,7 @@ export interface UploadedImage {
 export interface ProcessedClothingItem {
   tempId: string; // Temporary ID during processing
   originalImage: UploadedImage;
-  processedImage?: UploadedImage; // After background removal
+  processedImage?: UploadedImage; 
   detectedCategory?: string;
   detectedColor?: string;
   detectedMaterial?: string;
@@ -243,10 +241,9 @@ export interface ClothingItemForm {
   seasonality: Season[];
   formality: FormalityLevel;
 }
-// Add this interface to types/clothing.ts
 export interface ProcessedImageWithAI {
-  uri: string; // Processed image URI (with background removed)
-  originalUri: string; // Original image URI
+  uri: string; 
+  originalUri: string; 
   width: number;
   height: number;
   processedAt: string;
@@ -261,7 +258,6 @@ export interface ProcessedImageWithAI {
   };
 }
 
-// Type guards for runtime checking
 export const isValidClothingItem = (item: any): item is ClothingItem => {
   return (
     typeof item === 'object' &&

@@ -36,8 +36,6 @@ import wardrobeService from '../services/WardrobeService';
 
 // Types
 import {
-  OutfitRecommendation,
-  ClothingItem,
   WeatherCondition,
 } from '../types/clothing';
 

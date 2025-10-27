@@ -60,7 +60,6 @@ import {
 
 /**
  * Mock user data
- * TODO: Replace with actual user management system
  */
 const MOCK_USER = {
   name: 'User',
@@ -123,10 +122,6 @@ export default function ProfileScreen() {
       const wardrobeItems = await getWardrobeItems();
       const stats = calculateWardrobeStats(wardrobeItems);
       setWardrobeStats(stats);
-
-      // TODO: Load saved preferences from AsyncStorage
-      // const savedPrefs = await AsyncStorage.getItem('userPreferences');
-      // if (savedPrefs) setUserPreferences(JSON.parse(savedPrefs));
     } catch (error) {
       console.error('❌ Failed to load profile data:', error);
       Alert.alert(
@@ -194,13 +189,8 @@ export default function ProfileScreen() {
     loadProfileData();
   };
 
-  /**
-   * Save user preferences
-   * TODO: Implement AsyncStorage persistence
-   */
   const savePreferences = async (newPreferences: UserPreferences) => {
     try {
-      // TODO: await AsyncStorage.setItem('userPreferences', JSON.stringify(newPreferences));
       setUserPreferences(newPreferences);
 
       Alert.alert(
@@ -276,11 +266,6 @@ export default function ProfileScreen() {
     </SafeAreaView>
   );
 }
-
-// ============================================================================
-// SUB-COMPONENTS
-// ============================================================================
-
 /**
  * ProfileHeader Component
  */

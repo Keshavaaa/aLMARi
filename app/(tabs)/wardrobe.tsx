@@ -11,7 +11,6 @@ import {
   Alert,
   RefreshControl,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Search,
@@ -25,26 +24,20 @@ import {
 } from 'lucide-react-native';
 import { router } from 'expo-router';
 import Modal from 'react-native-modal';
-import * as SQLite from 'expo-sqlite';
-// Import our enhanced types
 import {
   ClothingItem,
   WardrobeFilters,
-  SearchOptions,
   CLOTHING_CATEGORIES,
   COMMON_COLORS,
   FormalityLevel,
   Season,
 } from '../../types/clothing';
-import { AppState } from 'react-native'; // Add to existing react-native imports
+import { AppState } from 'react-native';
 import {
   getStoredWardrobeItems,
   deleteWardrobeItem,
-} from '../../services/WardrobeStorage';  // Changed service name too!
-import { useFocusEffect } from '@react-navigation/native';
-import { useCallback } from 'react';
+} from '../../services/WardrobeStorage';
 import DatabaseService from '../../services/DatabaseService';
-import { deleteImageFile } from '../../services/ImageProcessingService';
 // Import our design system
 import {
   Colors,
@@ -55,7 +48,6 @@ import {
   IconSizes,
 } from '../../constants/Design';
 
-// Import our enhanced WardrobeItem component
 import WardrobeItem from '../../components/WardrobeItem';
 
 const { width } = Dimensions.get('window');
@@ -93,7 +85,6 @@ export default function Wardrobe() {
   useEffect(() => {
     loadWardrobeItems();
   }, []);
-  // ✅ ADD THIS: Auto-reload when screen becomes visible
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {
@@ -114,13 +105,10 @@ export default function Wardrobe() {
   const loadWardrobeItems = async () => {
     try {
       setLoading(true);
-      // ✅ CORRECT
       const wardrobeItems = await getStoredWardrobeItems({
-        includeSQLite: true, // Load from SQLite
-        includeAsyncStorage: false, // Don't load from AsyncStorage
+        includeSQLite: true,
+        includeAsyncStorage: false,
       });
-
-      // Convert to our ClothingItem type (in case service returns different format)
       const typedItems: ClothingItem[] = wardrobeItems.map((item) => ({
         id: item.id || Date.now().toString(),
         name: item.name || 'Unnamed Item',
@@ -128,17 +116,17 @@ export default function Wardrobe() {
         description: item.description || '',
         brand: item.brand,
         size: item.size || 'Unknown',
-        color: item.colors[0] || 'Unknown', // ✅ FIXED: colors is array
-        imageUri: item.image || '', // ✅ FIXED: field name
+        color: item.colors[0] || 'Unknown',
+        imageUri: item.image || '',
         originalImageUri: item.image,
         inLaundry: item.inLaundry || false,
         notes: item.notes || '',
         dateAdded: item.dateAdded || new Date().toISOString(),
-        lastWorn: undefined, // Not stored yet
-        timesWorn: 0, // Not stored yet
-        tags: [], // Not stored yet
-        seasonality: ['summer'], // Default
-        formality: 'casual', // Default
+        lastWorn: undefined,
+        timesWorn: 0,
+        tags: [],
+        seasonality: ['summer'],
+        formality: 'casual',
         material: undefined,
         price: undefined,
         purchaseDate: undefined,
@@ -181,16 +169,15 @@ export default function Wardrobe() {
           style: 'destructive',
           onPress: async () => {
             try {
-              // ✅ Use shared database instance instead of opening new connection
               const db = DatabaseService.getDatabase();
 
-              // ✅ Step 1: Get the item to find image URI
+              //  Step 1: Get the item to find image URI
               const item = (await db.getFirstAsync(
                 'SELECT image_uri FROM clothing_items WHERE id = ?',
                 [parseInt(itemId)],
               )) as any;
 
-              // ✅ Step 2: Delete image file from storage if it exists
+              //  Step 2: Delete image file from storage if it exists
               if (item?.image_uri) {
                 const fileSystem = require('expo-file-system');
                 await fileSystem.deleteAsync(item.image_uri, {
@@ -198,14 +185,13 @@ export default function Wardrobe() {
                 });
               }
 
-              // ✅ Step 3: Delete from database
+              //  Step 3: Delete from database
               await db.runAsync('DELETE FROM clothing_items WHERE id = ?', [
                 parseInt(itemId),
               ]);
 
-              // ✅ Step 4: Refresh the UI
+              //  Step 4: Refresh the UI
               console.log(`Item "${itemName}" deleted successfully`);
-              // Call your function to reload items list here
             } catch (error) {
               console.error('Delete failed:', error);
               Alert.alert('Error', 'Failed to delete item. Please try again.');
@@ -916,15 +902,15 @@ const styles = {
 
   // Category styles
   categoryScroll: {
-    maxHeight: 60, // ✅ Increased from 50 to 60
+    maxHeight: 60,
     marginBottom: Spacing.md,
   },
 
   categoryScrollContainer: {
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs, // ✅ ADD THIS LINE - adds vertical padding
+    paddingVertical: Spacing.xs,
     gap: Spacing.sm,
-    alignItems: 'center' as const, // ✅ ADD THIS LINE - centers items vertically
+    alignItems: 'center' as const,
   },
 
   categoryChip: {
@@ -934,8 +920,8 @@ const styles = {
     borderRadius: BorderRadius.full,
     borderWidth: 1,
     borderColor: Colors.border.light,
-    height: 36, // ✅ ADD THIS LINE - fixed height
-    justifyContent: 'center' as const, // ✅ ADD THIS LINE - centers text
+    height: 36,
+    justifyContent: 'center' as const,
   },
 
   categoryChipSelected: {

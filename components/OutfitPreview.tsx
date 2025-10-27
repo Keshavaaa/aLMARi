@@ -4,8 +4,8 @@ import { View, Image, StyleSheet, Text } from 'react-native';
 import { ClothingItem, OutfitRecommendation } from '../types/clothing';
 
 interface OutfitPreviewProps {
-  outfit: OutfitRecommendation; // Use the correct type
-  wardrobeItems?: ClothingItem[]; // Make optional since outfit already has items
+  outfit: OutfitRecommendation; 
+  wardrobeItems?: ClothingItem[];
 }
 
 export const OutfitPreview: React.FC<OutfitPreviewProps> = ({

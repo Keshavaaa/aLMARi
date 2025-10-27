@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import * as SQLite from 'expo-sqlite';
 import {
   ArrowLeft,
   Edit3,
@@ -95,7 +94,7 @@ export default function ItemViewScreen() {
                 }
               } catch (fileError) {
                 console.error('⚠️ Failed to delete image file:', fileError);
-                // Continue anyway to delete from database
+                
               }
             }
 

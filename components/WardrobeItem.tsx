@@ -1,4 +1,3 @@
-// components/WardrobeItem.tsx
 import React, { useState } from 'react';
 import {
   View,
@@ -27,7 +26,6 @@ import {
   Shadows,
   IconSizes,
 } from '../constants/Design';
-import wardrobeService from '../services/WardrobeService';
 
 interface WardrobeItemProps {
   item: {
@@ -60,7 +58,6 @@ export default function WardrobeItem({
     try {
       console.log(`Toggle laundry for item ${item.id}`);
 
-      // Import at the top: import { updateWardrobeItem } from '../services/WardrobeService';
       const wardrobeService = require('../services/WardrobeService').default;
 
       // Update the item's laundry status
@@ -163,7 +160,6 @@ export default function WardrobeItem({
     try {
       console.log(`Save note for item ${item.id}: ${note}`);
 
-      // Import at the top: import { updateWardrobeItem } from '../services/WardrobeService';
       const wardrobeService = require('../services/WardrobeService').default;
 
       // Update the item's notes
@@ -196,9 +192,9 @@ export default function WardrobeItem({
           activeOpacity={0.7}
           onPress={() => {
             router.push({
-              pathname: '/item-view', // ✅ Changed from '/item-details'
+              pathname: '/item-view', 
               params: {
-                itemId: item.id, // ✅ Changed from multiple params to just ID
+                itemId: item.id, 
               },
             });
           }}
