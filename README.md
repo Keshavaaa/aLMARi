@@ -1,4 +1,4 @@
-# aLMARi - Digital Wardrobe Manager
+# aLMARi™ - Digital Wardrobe Manager
 
 A React Native mobile app for managing your wardrobe digitally with AI-powered clothing analysis and outfit recommendations.
 
@@ -94,7 +94,7 @@ EXPO_PUBLIC_BACKEND_URL=http://localhost:8000
 
 ## 📄 License
 
-MIT
+Apache-2.0
 
 ## 👤 Author
 
@@ -103,3 +103,5 @@ Keshav Agarwal - Portfolio Project
 ---
 
 _Built as a learning project to learn mobile app development and AI integration in mobile apps_
+---
+**Trademark Notice:** aLMARi™ is a trademark of Keshav Agarwal. All rights reserved.
